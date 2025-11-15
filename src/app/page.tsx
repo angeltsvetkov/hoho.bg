@@ -68,6 +68,8 @@ export default function Home() {
   const [initialSpeechFile, setInitialSpeechFile] = useState<string | null>(null);
   const [isCustomMessage, setIsCustomMessage] = useState(false);
   const [shareableUrl, setShareableUrl] = useState<string | null>(null);
+  const [hasListened, setHasListened] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -86,6 +88,7 @@ export default function Home() {
         const audio = new Audio(speechFile);
         await audio.play();
         setShowPlayPrompt(false);
+        setHasListened(true);
       } catch (error) {
         if ((error as Error).name === 'NotAllowedError') {
           // Show play prompt button when autoplay is blocked
@@ -106,6 +109,7 @@ export default function Home() {
       const audio = new Audio(initialSpeechFile);
       await audio.play();
       setShowPlayPrompt(false);
+      setHasListened(true);
     } catch (error) {
       console.error('Error playing speech:', error);
     }
@@ -145,6 +149,7 @@ export default function Home() {
     if (isPlaying) return;
     
     setIsPlaying(true);
+    setHasListened(true);
     try {
       let audioUrl: string;
       
@@ -341,28 +346,32 @@ export default function Home() {
             />
           </div>
           <div className="relative mx-auto w-full max-w-md rounded-4xl border-4 border-white bg-linear-to-br from-[#fff0f8] to-[#ffe8f5] px-8 py-6 text-center shadow-[0_30px_90px_-30px_rgba(178,24,77,0.4)]">
-            <button
-              onClick={() => {
-                setTempMessage(message);
-                setIsModalOpen(true);
-              }}
-              className="absolute -left-4 -top-4 flex size-12 items-center justify-center rounded-full bg-white text-2xl shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] transition hover:scale-110 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]"
-              aria-label="Редактирай послание"
-            >
-              ✏️
-            </button>
-            <button
-              onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
-              disabled={isPlaying}
-              className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${
-                showPlayPrompt 
-                  ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]' 
-                  : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
-              }`}
-              aria-label="Чуй посланието"
-            >
-              {isPlaying ? '⏸️' : '▶️'}
-            </button>
+            {isCustomMessage && (
+              <>
+                <button
+                  onClick={() => {
+                    setTempMessage(message);
+                    setIsModalOpen(true);
+                  }}
+                  className="absolute -left-4 -top-4 flex size-12 items-center justify-center rounded-full bg-white text-2xl shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] transition hover:scale-110 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]"
+                  aria-label="Редактирай послание"
+                >
+                  ✏️
+                </button>
+                <button
+                  onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
+                  disabled={isPlaying}
+                  className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${
+                    showPlayPrompt 
+                      ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]' 
+                      : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
+                  }`}
+                  aria-label="Чуй посланието"
+                >
+                  {isPlaying ? '⏸️' : '▶️'}
+                </button>
+              </>
+            )}
             <p className="text-2xl font-black leading-relaxed text-[#d91f63]">
               {message}
             </p>
@@ -375,30 +384,34 @@ export default function Home() {
               </div>
             )}
           </div>
+          {!isCustomMessage && (
+            <button
+              onClick={hasListened ? () => {
+                setTempMessage(message);
+                setIsModalOpen(true);
+              } : (showPlayPrompt ? handlePlayPrompt : playTextToSpeech)}
+              className="mt-6 w-full max-w-md flex items-center justify-center gap-2 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-lg font-bold text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_25px_70px_-10px_rgba(220,53,119,0.9)]"
+              aria-label={hasListened ? "Персонализирай посланието" : "Чуй посланието на Дядо Коледа"}
+            >
+              <span className="text-xl">{hasListened ? '✏️' : '🔊'}</span>
+              <span>{hasListened ? 'Персонализирай посланието' : 'Чуй посланието на Дядо Коледа'}</span>
+            </button>
+          )}
           {isCustomMessage && lastGeneratedAudioUrl && (
             <div className="mt-4 flex flex-col items-center gap-3">
-              {shareableUrl && (
-                <div className="w-full max-w-md rounded-3xl border-4 border-white bg-white px-4 py-3 shadow-lg">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={shareableUrl}
-                      readOnly
-                      className="flex-1 truncate bg-transparent text-sm font-bold text-[#d91f63] outline-none"
-                    />
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(shareableUrl);
-                        alert('Линкът е копиран! 🎉');
-                      }}
-                      className="shrink-0 rounded-full bg-[#ff5a9d] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#ff85b8]"
-                    >
-                      📋 Копирай
-                    </button>
-                  </div>
-                </div>
-              )}
               <div className="flex flex-wrap justify-center gap-3">
+                {shareableUrl && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(shareableUrl);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border-4 border-white bg-linear-to-br from-[#ffd7ec] to-[#ffb3d9] px-6 py-3 text-base font-black uppercase tracking-wider text-[#d91f63] shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]"
+                  >
+                    {isCopied ? '✅ Копирано!' : '📋 Копирай линк'}
+                  </button>
+                )}
                 <button
                   onClick={handleShare}
                   className="inline-flex items-center gap-2 rounded-full border-4 border-white bg-linear-to-br from-[#ff85b8] to-[#ff5a9d] px-6 py-3 text-base font-black uppercase tracking-wider text-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] md:hidden"
