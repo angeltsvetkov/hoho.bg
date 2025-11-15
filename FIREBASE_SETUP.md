@@ -36,6 +36,13 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-XXXXXXXXXX
 
 In the Firebase Console, enable the services you need:
 
+### Authentication
+1. Go to "Build" → "Authentication"
+2. Click "Get started"
+3. Go to "Sign-in method" tab
+4. Enable "Anonymous" provider
+5. Click "Save"
+
 ### Firestore Database
 1. Go to "Build" → "Firestore Database"
 2. Click "Create database"
@@ -45,13 +52,47 @@ In the Firebase Console, enable the services you need:
 ### Storage
 1. Go to "Build" → "Storage"
 2. Click "Get started"
-3. Set up security rules
+3. Set up security rules (see below)
 
 ### Analytics (Optional)
 1. Go to "Build" → "Analytics"
 2. Enable Google Analytics
 
-## 5. Deploy to Vercel
+## 5. Configure Security Rules
+
+### Firestore Security Rules
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /sharedMessages/{messageId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
+```
+
+### Storage Security Rules
+```
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /speech/{messageId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+  }
+}
+```
+
+## 6. Deploy to Vercel
 
 When deploying to Vercel, add all environment variables in:
 **Project Settings** → **Environment Variables**
@@ -60,6 +101,7 @@ When deploying to Vercel, add all environment variables in:
 
 The app has the following Firebase services initialized:
 
+- **Authentication** (`auth`) - Anonymous authentication
 - **Firestore** (`db`) - NoSQL database
 - **Storage** (`storage`) - File storage
 - **Analytics** (`analytics`) - Analytics tracking (client-side only)
@@ -67,8 +109,11 @@ The app has the following Firebase services initialized:
 ## Usage Example
 
 ```typescript
-import { db, storage, analytics } from '@/lib/firebase';
+import { db, storage, auth, ensureAnonymousAuth } from '@/lib/firebase';
 import { collection, addDoc } from 'firebase/firestore';
+
+// Ensure user is authenticated anonymously
+await ensureAnonymousAuth();
 
 // Add a document to Firestore
 await addDoc(collection(db, 'messages'), {

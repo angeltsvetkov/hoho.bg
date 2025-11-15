@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { storage, db } from "@/lib/firebase";
+import { storage, db, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -70,10 +70,41 @@ export default function Home() {
   const [shareableUrl, setShareableUrl] = useState<string | null>(null);
   const [hasListened, setHasListened] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const [customizationsRemaining, setCustomizationsRemaining] = useState<number | null>(null);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  const handleOpenEditor = () => {
+    if (customizationsRemaining === 0) {
+      setIsPurchaseModalOpen(true);
+    } else {
+      setTempMessage(message);
+      setIsModalOpen(true);
+    }
+  };
+
+  // Sign in anonymously on page load and load user data
+  useEffect(() => {
+    if (!mounted) return;
+
+    const initAuth = async () => {
+      try {
+        const userId = await ensureAnonymousAuth();
+        const userData = await getUserData(userId);
+        setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
+        if (userData.hasListenedToDefault) {
+          setHasListened(true);
+        }
+      } catch (error) {
+        console.error('Error signing in anonymously:', error);
+      }
+    };
+
+    initAuth();
+  }, [mounted]);
 
   // Play the pre-recorded speech on page load
   useEffect(() => {
@@ -89,6 +120,10 @@ export default function Home() {
         await audio.play();
         setShowPlayPrompt(false);
         setHasListened(true);
+        
+        // Mark as listened in Firestore
+        const userId = await ensureAnonymousAuth();
+        await markDefaultMessageListened(userId);
       } catch (error) {
         if ((error as Error).name === 'NotAllowedError') {
           // Show play prompt button when autoplay is blocked
@@ -110,6 +145,14 @@ export default function Home() {
       await audio.play();
       setShowPlayPrompt(false);
       setHasListened(true);
+      
+      // Mark as listened in Firestore
+      try {
+        const userId = await ensureAnonymousAuth();
+        await markDefaultMessageListened(userId);
+      } catch (error) {
+        console.error('Error marking default message as listened:', error);
+      }
     } catch (error) {
       console.error('Error playing speech:', error);
     }
@@ -150,6 +193,17 @@ export default function Home() {
     
     setIsPlaying(true);
     setHasListened(true);
+    
+    // Mark as listened in Firestore if playing default message
+    if (!isCustomMessage) {
+      try {
+        const userId = await ensureAnonymousAuth();
+        await markDefaultMessageListened(userId);
+      } catch (error) {
+        console.error('Error marking default message as listened:', error);
+      }
+    }
+    
     try {
       let audioUrl: string;
       
@@ -215,10 +269,22 @@ export default function Home() {
     if (isGenerating || isPlaying) return;
     
     const messageText = textToSpeak || message;
-    setIsCustomMessage(true); // Mark as custom message
     
     setIsGenerating(true);
     try {
+      // Ensure anonymous authentication and check limits
+      const userId = await ensureAnonymousAuth();
+      
+      // Check if user can customize
+      const canCustomize = await canUserCustomize(userId);
+      if (!canCustomize) {
+        alert('Достигнахте максималния брой персонализации. Моля, опитайте отново утре! 🎅');
+        setIsGenerating(false);
+        return;
+      }
+      
+      setIsCustomMessage(true); // Mark as custom message
+      
       // Always generate new audio, ignore cache
       const response = await fetch('/api/text-to-speech', {
         method: 'POST',
@@ -259,6 +325,11 @@ export default function Home() {
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const shareUrl = `${baseUrl}/share/${uniqueId}`;
         setShareableUrl(shareUrl);
+        
+        // Increment customization count
+        await incrementCustomizationCount(userId);
+        const userData = await getUserData(userId);
+        setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
         
         // Use Firebase URL for download/share
         setLastGeneratedAudioUrl(firebaseUrl);
@@ -349,10 +420,7 @@ export default function Home() {
             {isCustomMessage && (
               <>
                 <button
-                  onClick={() => {
-                    setTempMessage(message);
-                    setIsModalOpen(true);
-                  }}
+                  onClick={handleOpenEditor}
                   className="absolute -left-4 -top-4 flex size-12 items-center justify-center rounded-full bg-white text-2xl shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] transition hover:scale-110 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]"
                   aria-label="Редактирай послание"
                 >
@@ -372,9 +440,35 @@ export default function Home() {
                 </button>
               </>
             )}
+            {!isCustomMessage && hasListened && (
+              <button
+                onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
+                disabled={isPlaying}
+                className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${
+                  showPlayPrompt 
+                    ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]' 
+                    : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
+                }`}
+                aria-label="Чуй посланието"
+              >
+                {isPlaying ? '⏸️' : '▶️'}
+              </button>
+            )}
             <p className="text-2xl font-black leading-relaxed text-[#d91f63]">
               {message}
             </p>
+            {customizationsRemaining !== null && customizationsRemaining > 0 && !isCustomMessage && (
+              <div 
+                className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
+                title="Оставащи персонализации"
+              >
+                {customizationsRemaining}
+                <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
+                  Оставащи персонализации
+                  <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
+                </div>
+              </div>
+            )}
             {isGenerating && (
               <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-white/80 backdrop-blur-sm">
                 <div className="flex flex-col items-center gap-3">
@@ -386,11 +480,8 @@ export default function Home() {
           </div>
           {!isCustomMessage && (
             <button
-              onClick={hasListened ? () => {
-                setTempMessage(message);
-                setIsModalOpen(true);
-              } : (showPlayPrompt ? handlePlayPrompt : playTextToSpeech)}
-              className="mt-6 w-full max-w-md flex items-center justify-center gap-2 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-lg font-bold text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_25px_70px_-10px_rgba(220,53,119,0.9)]"
+              onClick={hasListened ? handleOpenEditor : (showPlayPrompt ? handlePlayPrompt : playTextToSpeech)}
+              className="mt-6 w-full max-w-md flex items-center justify-center gap-2 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-lg font-bold text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_25px_70px_-10px_rgba(220,53,119,0.9)] animate-pulse-scale"
               aria-label={hasListened ? "Персонализирай посланието" : "Чуй посланието на Дядо Коледа"}
             >
               <span className="text-xl">{hasListened ? '✏️' : '🔊'}</span>
@@ -481,7 +572,53 @@ export default function Home() {
         </div>
       )}
 
-      <div className="relative z-10 w-full max-w-4xl">
+      {isPurchaseModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6 backdrop-blur-sm"
+          onClick={() => setIsPurchaseModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-lg rounded-4xl border-4 border-white bg-linear-to-br from-[#fff0f8] to-[#ffe8f5] p-8 shadow-[0_40px_120px_-40px_rgba(178,24,77,0.6)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="mb-4 text-center text-3xl font-black text-[#d91f63]">
+              Купи персонализации 🎅
+            </h2>
+            <p className="mb-8 text-center text-lg font-bold text-[#d91f63]/80">
+              Купи персонализации, за да създаваш магични коледни послания.
+            </p>
+            
+            <div className="mb-6 space-y-4">
+              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-2xl font-black text-white">10 Персонализации</span>
+                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#d91f63]">Най-изгодно!</span>
+                </div>
+                <div className="mt-1 text-lg font-bold text-white/90">2.00 лв</div>
+              </button>
+              
+              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="text-2xl font-black text-white">3 Персонализации</div>
+                <div className="mt-1 text-lg font-bold text-white/90">1.00 лв</div>
+              </button>
+              
+              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="text-2xl font-black text-white">1 Персонализация</div>
+                <div className="mt-1 text-lg font-bold text-white/90">0.50 лв</div>
+              </button>
+            </div>
+            
+            <button
+              onClick={() => setIsPurchaseModalOpen(false)}
+              className="w-full rounded-3xl border-4 border-white bg-white px-6 py-3 text-base font-black uppercase tracking-wider text-[#d91f63] shadow-lg transition hover:bg-[#fff0f8]"
+            >
+              Затвори
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="relative z-10 w-full max-w-4xl mt-12">
         <div className="mb-6 text-center">
           <h1 className="text-5xl font-black tracking-tight text-[#d91f63] sm:text-6xl md:text-7xl">
             До Коледа остават
