@@ -1,0 +1,8 @@
+POST http://localhost:3000/api/add-customizations
+Content-Type: application/json
+
+{
+  "userId": "dWlAKwp7qxRZgxi8WG4M0QECeA22",
+  "amount": 10,
+  "secret": "63f4945d921d599f27ae4fdf5bada3f1"
+}

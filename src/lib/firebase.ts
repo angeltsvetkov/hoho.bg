@@ -63,7 +63,7 @@ export const getUserData = async (userId: string): Promise<UserData> => {
   // Create new user with default allowance
   const newUserData: UserData = {
     customizationsUsed: 0,
-    customizationsAllowed: 3, // Default: 3 customizations per user
+    customizationsAllowed: 0, // Default: 0 customizations per user
     createdAt: new Date(),
   };
   
@@ -91,6 +91,14 @@ export const markDefaultMessageListened = async (userId: string): Promise<void> 
   const userDoc = doc(db, 'users', userId);
   await updateDoc(userDoc, {
     hasListenedToDefault: true,
+  });
+};
+
+// Add customizations to user's allowed count
+export const addCustomizationsToUser = async (userId: string, amount: number): Promise<void> => {
+  const userDoc = doc(db, 'users', userId);
+  await updateDoc(userDoc, {
+    customizationsAllowed: increment(amount),
   });
 };
 
