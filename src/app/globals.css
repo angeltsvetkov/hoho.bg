@@ -30,13 +30,28 @@ body {
 
 @keyframes wiggle {
   0%, 100% {
-    transform: rotate(-5deg);
+    transform: rotate(-2deg);
   }
   50% {
-    transform: rotate(5deg);
+    transform: rotate(2deg);
   }
 }
 
 .animate-wiggle {
   animation: wiggle 2s ease-in-out infinite;
+}
+
+@keyframes pulse-scale {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 20px 60px -25px rgba(220, 53, 119, 0.5);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 25px 70px -20px rgba(220, 53, 119, 0.7);
+  }
+}
+
+.animate-pulse-scale {
+  animation: pulse-scale 1.5s ease-in-out infinite;
 }
