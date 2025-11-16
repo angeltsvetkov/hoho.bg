@@ -184,7 +184,7 @@ export default function SharePage() {
           </div>
           <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
           <p className="text-xs font-bold text-[#d91f63]/60">
-            © 2025 Випли ЕООД. Всички права запазени.
+            © 2025 BrainEXT. Всички права запазени.
           </p>
         </div>
       </footer>

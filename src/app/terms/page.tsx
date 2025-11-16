@@ -35,7 +35,7 @@ export default function TermsPage() {
 
             <h2 className="mb-4 mt-8 text-2xl font-black text-[#d91f63]">1. Дефиниции</h2>
             
-            <p className="mb-3"><strong className="text-[#d91f63]">„Търговец" / „Ние"</strong> – Випли ЕООД, ЕИК: 206242051, със седалище и адрес на управление: гр.София, кв.Витоша, бл.5Б, имейл за контакт: angel@brainext.io.</p>
+            <p className="mb-3"><strong className="text-[#d91f63]">„Търговец" / „Ние"</strong> – BrainEXT, ЕИК: 208028879, със седалище и адрес на управление: гр.София, кв.Витоша, бл.5Б, имейл за контакт: angel@brainext.io.</p>
             
             <p className="mb-3"><strong className="text-[#d91f63]">„Потребител"</strong> – всяко физическо лице, което използва сайта и закупува дигитален продукт.</p>
             
@@ -182,8 +182,8 @@ export default function TermsPage() {
             <h2 className="mb-4 mt-8 text-2xl font-black text-[#d91f63]">12. Контакт</h2>
             
             <p className="mb-3">За въпроси и запитвания:</p>
-            <p className="mb-1"><strong className="text-[#d91f63]">Випли ЕООД</strong></p>
-            <p className="mb-1">ЕИК: 206242051</p>
+            <p className="mb-1"><strong className="text-[#d91f63]">BrainEXT</strong></p>
+            <p className="mb-1">ЕИК: 208028879</p>
             <p className="mb-1">Email: <a href="mailto:angel@brainext.io" className="text-[#ff5a9d] hover:underline">angel@brainext.io</a></p>
             <p className="mb-3">Адрес: гр.София, кв.Витоша, бл.5Б</p>
           </div>
