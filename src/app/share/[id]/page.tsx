@@ -20,6 +20,16 @@ export default function SharePage() {
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  const shareableUrl = typeof window !== 'undefined' ? window.location.href : '';
+
+  const handleShareFacebook = () => {
+    if (!shareableUrl) return;
+    
+    const url = encodeURIComponent(shareableUrl);
+    const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
+    window.open(facebookUrl, '_blank', 'width=600,height=600');
+  };
+
   useEffect(() => {
     const loadSharedMessage = async () => {
       if (!params.id) return;
@@ -126,6 +136,18 @@ export default function SharePage() {
             >
               {isPlaying ? "⏸️ Спри" : "🔊 Чуй посланието на Дядо Коледа"}
             </button>
+            
+            <button
+              onClick={handleShareFacebook}
+              className="inline-flex items-center gap-2 rounded-full border-4 border-white bg-linear-to-br from-[#4267B2] to-[#365899] px-6 py-3 text-base font-bold text-white shadow-[0_20px_60px_-25px_rgba(66,103,178,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(66,103,178,0.7)]"
+              aria-label="Сподели във Facebook"
+            >
+              <svg className="size-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+              </svg>
+              Сподели във Facebook
+            </button>
+
             <button
               onClick={() => router.push("/")}
               className="text-base font-bold text-[#d91f63] underline transition hover:text-[#ff5a9d]"
