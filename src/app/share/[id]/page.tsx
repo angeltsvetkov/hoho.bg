@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -134,6 +135,37 @@ export default function SharePage() {
           </div>
         </div>
       </div>
+
+      <footer className="relative z-10 mt-20 w-full max-w-4xl border-t-2 border-white/20 pt-8">
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <Link
+              href="/terms"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Общи условия
+            </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
+            <Link
+              href="/privacy"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Политика за поверителност
+            </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
+            <Link
+              href="/cookies"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Политика за бисквитки
+            </Link>
+          </div>
+          <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
+          <p className="text-xs font-bold text-[#d91f63]/60">
+            © 2025 Випли ЕООД. Всички права запазени.
+          </p>
+        </div>
+      </footer>
     </main>
   );
 }

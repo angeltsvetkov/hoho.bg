@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { storage, db, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened } from "@/lib/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -72,10 +73,21 @@ export default function Home() {
   const [isCopied, setIsCopied] = useState(false);
   const [customizationsRemaining, setCustomizationsRemaining] = useState<number | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [showCookieBanner, setShowCookieBanner] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    // Check if user has already accepted cookies
+    const cookiesAccepted = localStorage.getItem('cookiesAccepted');
+    if (!cookiesAccepted) {
+      setShowCookieBanner(true);
+    }
   }, []);
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem('cookiesAccepted', 'true');
+    setShowCookieBanner(false);
+  };
 
   const handleOpenEditor = () => {
     if (customizationsRemaining === 0) {
@@ -457,17 +469,34 @@ export default function Home() {
             <p className="text-2xl font-black leading-relaxed text-[#d91f63]">
               {message}
             </p>
-            {customizationsRemaining !== null && customizationsRemaining > 0 && !isCustomMessage && (
-              <div 
-                className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
-                title="Оставащи персонализации"
-              >
-                {customizationsRemaining}
-                <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
-                  Оставащи персонализации
-                  <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
-                </div>
-              </div>
+            {customizationsRemaining !== null && !isCustomMessage && (
+              <>
+                {customizationsRemaining > 0 ? (
+                  <div 
+                    className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
+                    title="Оставащи персонализации"
+                  >
+                    {customizationsRemaining}
+                    <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
+                      Оставащи персонализации
+                      <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setIsPurchaseModalOpen(true)}
+                    className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ffd700] to-[#ffb700] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(255,215,0,0.8)] transition hover:scale-110 animate-pulse-scale"
+                    title="Купи персонализации"
+                    aria-label="Купи персонализации"
+                  >
+                    🛒
+                    <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
+                      Купи персонализации
+                      <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
+                    </div>
+                  </button>
+                )}
+              </>
             )}
             {isGenerating && (
               <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-white/80 backdrop-blur-sm">
@@ -640,6 +669,62 @@ export default function Home() {
           ))}
         </div>
       </div>
+
+      <footer className="relative z-10 mt-20 w-full max-w-4xl border-t-2 border-white/20 pt-8">
+        <div className="flex flex-col items-center gap-6">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+            <Link
+              href="/terms"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Общи условия
+            </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
+            <Link
+              href="/privacy"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Политика за поверителност
+            </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
+            <Link
+              href="/cookies"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Политика за бисквитки
+            </Link>
+          </div>
+          <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
+          <p className="text-xs font-bold text-[#d91f63]/60">
+            © 2025 Випли ЕООД. Всички права запазени.
+          </p>
+        </div>
+      </footer>
+
+      {/* Cookie Banner */}
+      {showCookieBanner && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t-4 border-[#ffd7ec] shadow-[0_-10px_40px_-10px_rgba(220,53,119,0.3)] p-6 animate-[slideUp_0.3s_ease-out]">
+          <div className="mx-auto max-w-4xl flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-[#d91f63] mb-2">
+                🍪 Използваме бисквитки
+              </p>
+              <p className="text-xs text-[#d91f63]/80">
+                Този сайт използва технически бисквитки, необходими за правилното функциониране. Не събираме лични данни за маркетинг.{' '}
+                <Link href="/cookies" className="underline hover:text-[#ff5a9d]">
+                  Научете повече
+                </Link>
+              </p>
+            </div>
+            <button
+              onClick={handleAcceptCookies}
+              className="rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
+            >
+              Разбрах
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
