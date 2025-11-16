@@ -469,34 +469,17 @@ export default function Home() {
             <p className="text-2xl font-black leading-relaxed text-[#d91f63]">
               {message}
             </p>
-            {customizationsRemaining !== null && !isCustomMessage && (
-              <>
-                {customizationsRemaining > 0 ? (
-                  <div 
-                    className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
-                    title="Оставащи персонализации"
-                  >
-                    {customizationsRemaining}
-                    <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
-                      Оставащи персонализации
-                      <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setIsPurchaseModalOpen(true)}
-                    className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ffd700] to-[#ffb700] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(255,215,0,0.8)] transition hover:scale-110 animate-pulse-scale"
-                    title="Купи персонализации"
-                    aria-label="Купи персонализации"
-                  >
-                    🛒
-                    <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
-                      Купи персонализации
-                      <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
-                    </div>
-                  </button>
-                )}
-              </>
+            {customizationsRemaining !== null && !isCustomMessage && customizationsRemaining > 0 && (
+              <div 
+                className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
+                title="Оставащи персонализации"
+              >
+                {customizationsRemaining}
+                <div className="pointer-events-none absolute -top-12 right-0 z-50 hidden whitespace-nowrap rounded-lg bg-[#2d1b3d] px-3 py-2 text-xs font-bold text-white shadow-lg group-hover:block">
+                  Оставащи персонализации
+                  <div className="absolute -bottom-1 right-4 size-2 rotate-45 bg-[#2d1b3d]"></div>
+                </div>
+              </div>
             )}
             {isGenerating && (
               <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-white/80 backdrop-blur-sm">

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Santa's hat -->
+  <circle cx="32" cy="28" r="28" fill="#D91F63"/>
+  
+  <!-- Hat trim -->
+  <rect x="4" y="24" width="56" height="6" fill="#FFFFFF" rx="3"/>
+  
+  <!-- Hat pompom -->
+  <circle cx="32" cy="4" r="5" fill="#FFFFFF"/>
+  
+  <!-- Face -->
+  <circle cx="32" cy="38" r="18" fill="#FFE4CC"/>
+  
+  <!-- Eyes -->
+  <circle cx="26" cy="36" r="2.5" fill="#2B1830"/>
+  <circle cx="38" cy="36" r="2.5" fill="#2B1830"/>
+  
+  <!-- Eye sparkles -->
+  <circle cx="27" cy="35" r="1" fill="#FFFFFF"/>
+  <circle cx="39" cy="35" r="1" fill="#FFFFFF"/>
+  
+  <!-- Rosy cheeks -->
+  <circle cx="22" cy="40" r="3" fill="#FFB3D9" opacity="0.6"/>
+  <circle cx="42" cy="40" r="3" fill="#FFB3D9" opacity="0.6"/>
+  
+  <!-- Nose -->
+  <circle cx="32" cy="40" r="2" fill="#FF5A9D"/>
+  
+  <!-- Mouth/Beard top -->
+  <ellipse cx="32" cy="46" rx="8" ry="4" fill="#FFFFFF"/>
+  
+  <!-- Beard -->
+  <path d="M 20 46 Q 20 54 32 56 Q 44 54 44 46" fill="#FFFFFF"/>
+  <circle cx="32" cy="54" r="6" fill="#FFFFFF"/>
+  
+  <!-- Mustache -->
+  <ellipse cx="24" cy="43" rx="5" ry="2.5" fill="#FFFFFF"/>
+  <ellipse cx="40" cy="43" rx="5" ry="2.5" fill="#FFFFFF"/>
+</svg>

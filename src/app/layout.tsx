@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   description:
     "Празнично детско отброяване, което следи всяка секунда до Коледа с мисии и весели предизвикателства.",
   icons: {
-    icon: "/favicon.ico",
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "any" }
+    ],
+    apple: "/favicon.svg",
   },
 };
 
