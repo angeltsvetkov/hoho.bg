@@ -47,23 +47,35 @@ export async function POST(request: NextRequest) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      console.log('Checkout completed:', {
+      console.log('🎉 Checkout completed!');
+      console.log('Session details:', {
         sessionId: session.id,
         customerId: session.customer,
+        customerEmail: session.customer_details?.email,
         clientReferenceId: session.client_reference_id,
         metadata: session.metadata,
+        paymentStatus: session.payment_status,
+        amountTotal: session.amount_total,
       });
 
       // Get the user ID from client_reference_id (from payment link) or metadata
       const userId = session.client_reference_id || session.metadata?.userId;
       
+      // If no userId, try to get it from customer details or session
       if (!userId) {
-        console.error('No userId found in session');
+        console.warn('⚠️ No userId in client_reference_id or metadata');
+        console.log('Full session object:', JSON.stringify(session, null, 2));
+        
+        // As a fallback, we could use customer email or ID
+        // But this is not ideal - user should be passed via client_reference_id
+        console.error('❌ Cannot process payment without userId');
         return NextResponse.json(
-          { error: 'No userId in session' },
+          { error: 'No userId in session - payment succeeded but customizations not added. Contact support with session ID: ' + session.id },
           { status: 400 }
         );
       }
+      
+      console.log(`👤 Processing for user: ${userId}`);
 
       // Get line items to determine what was purchased
       const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
@@ -106,9 +118,16 @@ export async function POST(request: NextRequest) {
 
       if (totalCustomizations > 0) {
         // Add customizations to the user's account
-        await addCustomizationsToUser(userId, totalCustomizations);
-        
-        console.log(`Added ${totalCustomizations} customizations to user ${userId}`);
+        try {
+          await addCustomizationsToUser(userId, totalCustomizations);
+          console.log(`✅ Successfully added ${totalCustomizations} customizations to user ${userId}`);
+        } catch (error) {
+          console.error(`❌ Failed to add customizations to user ${userId}:`, error);
+          return NextResponse.json(
+            { error: 'Failed to update user customizations' },
+            { status: 500 }
+          );
+        }
         
         return NextResponse.json({
           success: true,
