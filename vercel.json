@@ -1,25 +1,16 @@
 {
-  "rewrites": [
-    {
-      "source": "/api/stripe-webhook",
-      "destination": "/api/stripe-webhook"
+  "functions": {
+    "api/stripe-webhook/route.ts": {
+      "maxDuration": 10
     }
-  ],
+  },
   "headers": [
     {
       "source": "/api/stripe-webhook",
       "headers": [
         {
           "key": "Cache-Control",
-          "value": "no-store, no-cache, must-revalidate"
-        },
-        {
-          "key": "CDN-Cache-Control",
-          "value": "no-store"
-        },
-        {
-          "key": "Vercel-CDN-Cache-Control",
-          "value": "no-store"
+          "value": "no-store, no-cache, must-revalidate, max-age=0"
         }
       ]
     }
