@@ -5,6 +5,7 @@ import { addCustomizationsToUser } from '@/lib/firebase';
 // Force this route to be dynamic and not cached
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const revalidate = 0;
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-10-29.clover',
