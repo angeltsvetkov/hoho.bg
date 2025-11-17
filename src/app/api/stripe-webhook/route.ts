@@ -77,7 +77,29 @@ export async function POST(request: NextRequest) {
       
       console.log(`👤 Processing for user: ${userId}`);
 
-      // Get line items to determine what was purchased
+      // Check if we can determine customizations from payment_link
+      const paymentLinkId = typeof session.payment_link === 'string' ? session.payment_link : null;
+      if (paymentLinkId && PRICE_TO_CUSTOMIZATIONS[paymentLinkId]) {
+        const customizations = PRICE_TO_CUSTOMIZATIONS[paymentLinkId];
+        console.log(`💰 Matched payment link ${paymentLinkId} to ${customizations} customizations`);
+        
+        try {
+          await addCustomizationsToUser(userId, customizations);
+          console.log(`✅ Successfully added ${customizations} customizations to user ${userId}`);
+          return NextResponse.json({
+            success: true,
+            message: `Added ${customizations} customizations to user ${userId}`,
+          });
+        } catch (error) {
+          console.error(`❌ Failed to add customizations to user ${userId}:`, error);
+          return NextResponse.json(
+            { error: 'Failed to update user customizations' },
+            { status: 500 }
+          );
+        }
+      }
+
+      // Fallback: Get line items to determine what was purchased
       const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
       
       console.log('Line items:', JSON.stringify(lineItems.data, null, 2));
