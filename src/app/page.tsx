@@ -76,6 +76,41 @@ export default function Home() {
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [isProcessingPurchase, setIsProcessingPurchase] = useState(false);
+
+  const handlePurchase = async (customizations: number, price: number) => {
+    if (!currentUserId) {
+      alert('Моля, изчакайте да се зареди страницата напълно.');
+      return;
+    }
+
+    setIsProcessingPurchase(true);
+    trackPurchaseIntent(customizations, price);
+
+    try {
+      const response = await fetch('/api/create-checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          customizations,
+          userId: currentUserId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+      window.location.href = url;
+    } catch (error) {
+      console.error('Error creating checkout:', error);
+      alert('Възникна грешка. Моля, опитайте отново.');
+      setIsProcessingPurchase(false);
+    }
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -87,6 +122,22 @@ export default function Home() {
     const cookiesAccepted = localStorage.getItem('cookiesAccepted');
     if (!cookiesAccepted) {
       setShowCookieBanner(true);
+    }
+
+    // Check for purchase success/cancel in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const success = urlParams.get('success');
+    const canceled = urlParams.get('canceled');
+    const customizations = urlParams.get('customizations');
+
+    if (success === 'true' && customizations) {
+      alert(`🎉 Благодарим за покупката! Добавени са ${customizations} персонализации към вашия акаунт!`);
+      // Clean URL
+      window.history.replaceState({}, '', '/');
+    } else if (canceled === 'true') {
+      alert('❌ Плащането беше отменено. Опитайте отново, когато сте готови!');
+      // Clean URL
+      window.history.replaceState({}, '', '/');
     }
   }, []);
 
@@ -619,41 +670,41 @@ export default function Home() {
             </p>
 
             <div className="mb-6 space-y-4">
-              <a
-                href="https://buy.stripe.com/6oU3cobTw3I9gH4avza7C02"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(10, 3)}
-                className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(220,53,119,0.9)]">
+              <button
+                onClick={() => handlePurchase(10, 3)}
+                disabled={isProcessingPurchase}
+                className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(220,53,119,0.9)] disabled:opacity-50 disabled:cursor-not-allowed">
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                   <span className="rounded-full bg-[#00ff00] px-4 py-1 text-sm font-black text-[#d91f63] shadow-lg animate-pulse-scale">
                     Най-изгодно! 🎁
                   </span>
                 </div>
-                <div className="text-3xl font-black text-white">10 Персонализации</div>
+                <div className="text-3xl font-black text-white">
+                  {isProcessingPurchase ? 'Зареждане...' : '10 Персонализации'}
+                </div>
                 <div className="mt-2 text-xl font-bold text-white/90">3 лв</div>
                 <div className="mt-1 text-sm font-bold text-white/70">Само 0.30 лв на персонализация</div>
-              </a>
+              </button>
 
-              <a
-                href="https://buy.stripe.com/eVq00c4r4diJ4YmdHLa7C01"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(3, 2)}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="text-2xl font-black text-white">3 Персонализации</div>
+              <button
+                onClick={() => handlePurchase(3, 2)}
+                disabled={isProcessingPurchase}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:opacity-50 disabled:cursor-not-allowed">
+                <div className="text-2xl font-black text-white">
+                  {isProcessingPurchase ? 'Зареждане...' : '3 Персонализации'}
+                </div>
                 <div className="mt-1 text-lg font-bold text-white/90">2 лв</div>
-              </a>
+              </button>
 
-              <a
-                href="https://buy.stripe.com/8x2aEQ7Dg1A176u1Z3a7C00"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(1, 1)}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="text-2xl font-black text-white">1 Персонализация</div>
+              <button
+                onClick={() => handlePurchase(1, 1)}
+                disabled={isProcessingPurchase}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:opacity-50 disabled:cursor-not-allowed">
+                <div className="text-2xl font-black text-white">
+                  {isProcessingPurchase ? 'Зареждане...' : '1 Персонализация'}
+                </div>
                 <div className="mt-1 text-lg font-bold text-white/90">1 лв</div>
-              </a>
+              </button>
             </div>
 
             <button
