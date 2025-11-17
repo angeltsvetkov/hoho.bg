@@ -11,9 +11,9 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 // Mapping of Stripe price IDs to customization amounts
 const PRICE_TO_CUSTOMIZATIONS: Record<string, number> = {
   // Replace these with your actual Stripe Price IDs from your payment links
-  'price_1': 1,   // 1 персонализация за 1 лв
-  'price_3': 3,   // 3 персонализации за 2 лв
-  'price_10': 10, // 10 персонализации за 3 лв
+  'plink_1SUBEk2KjEFg0ZKw36nBXRk4': 1,   // 1 персонализация за 1 лв
+  'plink_1SUBJt2KjEFg0ZKwm0xmmUUY': 3,   // 3 персонализации за 2 лв
+  'plink_1SUBfv2KjEFg0ZKw4L0zcrln': 10, // 10 персонализации за 3 лв
 };
 
 export async function POST(request: NextRequest) {
