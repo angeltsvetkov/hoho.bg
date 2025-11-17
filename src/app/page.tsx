@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { storage, db, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened } from "@/lib/firebase";
+import { initializeAnalyticsWithConsent, setAnalyticsConsent, trackPageView, trackAudioPlay, trackCustomization, trackShare, trackPurchaseIntent } from "@/lib/analytics";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc } from "firebase/firestore";
 
@@ -77,6 +78,10 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true);
+    // Initialize analytics with consent
+    initializeAnalyticsWithConsent();
+    // Track page view
+    trackPageView('/');
     // Check if user has already accepted cookies
     const cookiesAccepted = localStorage.getItem('cookiesAccepted');
     if (!cookiesAccepted) {
@@ -84,9 +89,14 @@ export default function Home() {
     }
   }, []);
 
-  const handleAcceptCookies = () => {
+  const handleAcceptCookies = (enableAnalytics: boolean) => {
     localStorage.setItem('cookiesAccepted', 'true');
+    setAnalyticsConsent(enableAnalytics);
     setShowCookieBanner(false);
+    if (enableAnalytics) {
+      // Track page view after consent
+      trackPageView('/');
+    }
   };
 
   const handleOpenEditor = () => {
@@ -180,9 +190,11 @@ export default function Home() {
           text: message,
           url: shareableUrl,
         });
+        trackShare('native');
       } else {
         // Fallback: copy to clipboard
         await navigator.clipboard.writeText(shareableUrl);
+        trackShare('copy');
         alert('Линкът е копиран! 🎉');
       }
     } catch (error) {
@@ -195,6 +207,7 @@ export default function Home() {
   const handleShareFacebook = () => {
     if (!shareableUrl) return;
     
+    trackShare('facebook');
     const url = encodeURIComponent(shareableUrl);
     const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
     window.open(facebookUrl, '_blank', 'width=600,height=600');
@@ -221,6 +234,7 @@ export default function Home() {
       
       // If message is not customized, play the predefined MP3
       if (!isCustomMessage && initialSpeechFile) {
+        trackAudioPlay('default', timeLeft.days);
         const audio = new Audio(initialSpeechFile);
         
         audio.onended = () => {
@@ -354,6 +368,9 @@ export default function Home() {
       
       // Update cache with blob URL for playback
       setAudioCache(prev => new Map(prev).set(messageText, audioUrl));
+      
+      // Track customization
+      trackAudioPlay('custom');
       
       setIsGenerating(false);
       setIsPlaying(true);
@@ -571,6 +588,7 @@ export default function Home() {
                 onClick={() => {
                   setMessage(tempMessage);
                   setIsModalOpen(false);
+                  trackCustomization(tempMessage.length);
                   // Generate and play new speech immediately after saving
                   setTimeout(() => generateAndPlayNewSpeech(tempMessage), 100);
                 }}
@@ -601,7 +619,9 @@ export default function Home() {
             </p>
             
             <div className="mb-6 space-y-4">
-              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+              <button 
+                onClick={() => trackPurchaseIntent(10, 2.00)}
+                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-2xl font-black text-white">10 Персонализации</span>
                   <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#d91f63]">Най-изгодно!</span>
@@ -609,12 +629,16 @@ export default function Home() {
                 <div className="mt-1 text-lg font-bold text-white/90">2.00 лв</div>
               </button>
               
-              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+              <button 
+                onClick={() => trackPurchaseIntent(3, 1.00)}
+                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">3 Персонализации</div>
                 <div className="mt-1 text-lg font-bold text-white/90">1.00 лв</div>
               </button>
               
-              <button className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+              <button 
+                onClick={() => trackPurchaseIntent(1, 0.50)}
+                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">1 Персонализация</div>
                 <div className="mt-1 text-lg font-bold text-white/90">0.50 лв</div>
               </button>
@@ -687,24 +711,35 @@ export default function Home() {
       {/* Cookie Banner */}
       {showCookieBanner && (
         <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-md border-t-4 border-[#ffd7ec] shadow-[0_-10px_40px_-10px_rgba(220,53,119,0.3)] p-6 animate-[slideUp_0.3s_ease-out]">
-          <div className="mx-auto max-w-4xl flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="mx-auto max-w-4xl flex flex-col gap-4">
             <div className="flex-1">
               <p className="text-sm font-bold text-[#d91f63] mb-2">
                 🍪 Използваме бисквитки
               </p>
-              <p className="text-xs text-[#d91f63]/80">
-                Този сайт използва технически бисквитки, необходими за правилното функциониране. Не събираме лични данни за маркетинг.{' '}
+              <p className="text-xs text-[#d91f63]/80 mb-3">
+                Този сайт използва технически бисквитки, необходими за правилното функциониране.{' '}
                 <Link href="/cookies" className="underline hover:text-[#ff5a9d]">
                   Научете повече
                 </Link>
               </p>
+              <p className="text-xs text-[#d91f63]/80 mb-4">
+                Искате ли да активирате Google Analytics за подобряване на услугата? (по избор)
+              </p>
             </div>
-            <button
-              onClick={handleAcceptCookies}
-              className="rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
-            >
-              Разбрах
-            </button>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={() => handleAcceptCookies(true)}
+                className="flex-1 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
+              >
+                Приемам с Analytics
+              </button>
+              <button
+                onClick={() => handleAcceptCookies(false)}
+                className="flex-1 rounded-full border-2 border-[#d91f63] bg-white px-6 py-3 text-sm font-bold text-[#d91f63] shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
+              >
+                Само технически бисквитки
+              </button>
+            </div>
           </div>
         </div>
       )}

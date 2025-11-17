@@ -23,7 +23,7 @@ const storage = getStorage(app);
 const auth = getAuth(app);
 
 // Analytics - only initialize on client side
-let analytics;
+let analytics: ReturnType<typeof getAnalytics> | undefined;
 if (typeof window !== 'undefined') {
   analytics = getAnalytics(app);
 }

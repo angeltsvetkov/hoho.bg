@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
+import { initializeAnalyticsWithConsent, trackPageView, trackAudioPlay, trackShare } from "@/lib/analytics";
 import { doc, getDoc } from "firebase/firestore";
 
 type SharedMessage = {
@@ -25,12 +26,17 @@ export default function SharePage() {
   const handleShareFacebook = () => {
     if (!shareableUrl) return;
     
+    trackShare('facebook');
     const url = encodeURIComponent(shareableUrl);
     const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
     window.open(facebookUrl, '_blank', 'width=600,height=600');
   };
 
   useEffect(() => {
+    // Initialize analytics
+    initializeAnalyticsWithConsent();
+    trackPageView(`/share/${params.id}`);
+    
     const loadSharedMessage = async () => {
       if (!params.id) return;
 
@@ -57,6 +63,7 @@ export default function SharePage() {
     if (!message?.audioUrl || isPlaying) return;
 
     setIsPlaying(true);
+    trackAudioPlay('custom');
     try {
       const audio = new Audio(message.audioUrl);
       
