@@ -74,12 +74,31 @@ export async function POST(request: NextRequest) {
       
       for (const item of lineItems.data) {
         const priceId = item.price?.id;
-        console.log(`Processing item with price ID: ${priceId}`);
+        const amount = item.amount_total || 0; // Amount in cents
+        console.log(`Processing item with price ID: ${priceId}, amount: ${amount}`);
         
         if (priceId && PRICE_TO_CUSTOMIZATIONS[priceId]) {
           const quantity = item.quantity || 1;
           totalCustomizations += PRICE_TO_CUSTOMIZATIONS[priceId] * quantity;
-          console.log(`Matched! Adding ${PRICE_TO_CUSTOMIZATIONS[priceId] * quantity} customizations`);
+          console.log(`Matched by price ID! Adding ${PRICE_TO_CUSTOMIZATIONS[priceId] * quantity} customizations`);
+        } else if (amount) {
+          // Fallback: determine customizations by amount
+          // 100 cents = 1 лв = 1 customization
+          // 200 cents = 2 лв = 3 customizations
+          // 300 cents = 3 лв = 10 customizations
+          const customizationsByAmount: Record<number, number> = {
+            100: 1,   // 1 лв
+            200: 3,   // 2 лв
+            300: 10,  // 3 лв
+          };
+          
+          if (customizationsByAmount[amount]) {
+            totalCustomizations += customizationsByAmount[amount];
+            console.log(`Matched by amount (${amount})! Adding ${customizationsByAmount[amount]} customizations`);
+            console.log(`Note: Add price ID "${priceId}" to PRICE_TO_CUSTOMIZATIONS mapping`);
+          } else {
+            console.warn(`Unknown price ID: ${priceId} and unknown amount: ${amount}`);
+          }
         } else {
           console.warn(`Unknown price ID: ${priceId} - Please add this to PRICE_TO_CUSTOMIZATIONS mapping`);
         }
