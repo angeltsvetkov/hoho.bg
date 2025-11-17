@@ -723,7 +723,7 @@ export default function Home() {
                 </Link>
               </p>
               <p className="text-xs text-[#d91f63]/80 mb-4">
-                Искате ли да активирате Google Analytics за подобряване на услугата? (по избор)
+                Искате ли да ни помогнете да подобрим услугата, като ни позволите да събираме анонимна статистика? (по избор)
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
@@ -731,13 +731,13 @@ export default function Home() {
                 onClick={() => handleAcceptCookies(true)}
                 className="flex-1 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
               >
-                Приемам с Analytics
+                Да, помагам
               </button>
               <button
                 onClick={() => handleAcceptCookies(false)}
                 className="flex-1 rounded-full border-2 border-[#d91f63] bg-white px-6 py-3 text-sm font-bold text-[#d91f63] shadow-lg transition hover:scale-105 hover:shadow-xl whitespace-nowrap"
               >
-                Само технически бисквитки
+                Не, благодаря
               </button>
             </div>
           </div>
