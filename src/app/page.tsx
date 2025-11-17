@@ -461,8 +461,8 @@ export default function Home() {
                   onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
                   disabled={isPlaying}
                   className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${showPlayPrompt
-                      ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
-                      : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
+                    ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
+                    : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
                     }`}
                   aria-label="Чуй посланието"
                 >
@@ -475,8 +475,8 @@ export default function Home() {
                 onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
                 disabled={isPlaying}
                 className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${showPlayPrompt
-                    ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
-                    : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
+                  ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
+                  : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
                   }`}
                 aria-label="Чуй посланието"
               >
@@ -619,29 +619,39 @@ export default function Home() {
             </p>
 
             <div className="mb-6 space-y-4">
-              <button
-                onClick={() => trackPurchaseIntent(10, 2.00)}
-                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-2xl font-black text-white">10 Персонализации</span>
-                  <span className="rounded-full bg-white px-3 py-1 text-xs font-black text-[#d91f63]">Най-изгодно!</span>
-                </div>
-                <div className="mt-1 text-lg font-bold text-white/90">2.00 лв</div>
-              </button>
-
-              <button
-                onClick={() => trackPurchaseIntent(3, 1.00)}
-                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="text-2xl font-black text-white">3 Персонализации</div>
-                <div className="mt-1 text-lg font-bold text-white/90">1.00 лв</div>
-              </button>
-
-              <button
-                onClick={() => trackPurchaseIntent(1, 0.50)}
-                className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+              <a
+                href="https://buy.stripe.com/8x2aEQ7Dg1A176u1Z3a7C00"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackPurchaseIntent(1, 1)}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">1 Персонализация</div>
-                <div className="mt-1 text-lg font-bold text-white/90">0.50 лв</div>
-              </button>
+                <div className="mt-1 text-lg font-bold text-white/90">1 лв</div>
+              </a>
+            </div>
+
+            <div className="mb-6 space-y-4">
+              <a
+                href="https://buy.stripe.com/eVq00c4r4diJ4YmdHLa7C01"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackPurchaseIntent(1, 2)}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="text-2xl font-black text-white">3 Персонализации</div>
+                <div className="mt-1 text-lg font-bold text-white/90">2 лв</div>
+              </a>
+            </div>
+
+            <div className="mb-6 space-y-4">
+              <a
+                href="https://buy.stripe.com/6oU3cobTw3I9gH4avza7C02"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackPurchaseIntent(1, 3)}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="text-2xl font-black text-white">10 Персонализации</div>
+                <div className="mt-1 text-lg font-bold text-white/90">3 лв</div>
+              </a>
             </div>
 
             <button

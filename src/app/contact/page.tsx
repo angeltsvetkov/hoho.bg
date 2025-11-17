@@ -69,7 +69,7 @@ export default function ContactPage() {
                   </p>
                 </div>
 
-                <div>
+              <div>
                   <h3 className="mb-2 text-lg font-bold text-[#d91f63]">Имам друг въпрос</h3>
                   <p className="text-[#d91f63]/80">
                     Не се колебайте да ни пишете на <a href="mailto:angel@brainext.io" className="font-bold text-[#ff5a9d] hover:underline">angel@brainext.io</a>. Ще се радваме да отговорим на всички ваши въпроси! 🎄
