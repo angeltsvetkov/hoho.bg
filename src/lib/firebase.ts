@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { getAuth, signInAnonymously, type Auth } from 'firebase/auth';
+import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signInWithRedirect, linkWithPopup, linkWithRedirect, getRedirectResult, type Auth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -43,6 +43,171 @@ export const ensureAnonymousAuth = async (): Promise<string> => {
   }
 };
 
+// Helper function to check if user is anonymous
+export const isAnonymousUser = (): boolean => {
+  return auth.currentUser?.isAnonymous ?? true;
+};
+
+// Helper function to sign in with Google
+export const signInWithGoogle = async (useRedirect: boolean = false): Promise<{ userId: string; isNewUser: boolean }> => {
+  try {
+    console.log('🔐 Starting Google sign-in...');
+    
+    // Check if user is already signed in with Google
+    const currentUser = auth.currentUser;
+    if (currentUser && !currentUser.isAnonymous) {
+      console.log('✅ User already signed in with Google');
+      return { userId: currentUser.uid, isNewUser: false };
+    }
+    
+    const provider = new GoogleAuthProvider();
+    provider.addScope('profile');
+    provider.addScope('email');
+    const wasAnonymous = currentUser?.isAnonymous ?? false;
+    console.log('👤 Current user anonymous:', wasAnonymous);
+    
+    if (useRedirect) {
+      // Use redirect method (better for Arc and mobile browsers)
+      console.log('🔄 Using redirect method...');
+      // Store that we're expecting a new user bonus after redirect
+      localStorage.setItem('expectingSignInBonus', 'true');
+      if (wasAnonymous && currentUser) {
+        await linkWithRedirect(currentUser, provider);
+      } else {
+        await signInWithRedirect(auth, provider);
+      }
+      // After redirect, this function won't return - user will be redirected
+      return { userId: '', isNewUser: false }; // This won't be reached
+    }
+    
+    // Use popup method
+    let result;
+    let userId: string;
+    
+    if (wasAnonymous && currentUser) {
+      // Try to link anonymous account with Google
+      console.log('🔗 Attempting to link anonymous account with Google...');
+      try {
+        result = await linkWithPopup(currentUser, provider);
+        userId = result.user.uid;
+        console.log('✅ Accounts linked successfully');
+      } catch (linkError: any) {
+        // If account already exists, sign in with Google instead
+        if (linkError.code === 'auth/credential-already-in-use') {
+          console.log('ℹ️ Google account already exists, signing in instead...');
+          try {
+            result = await signInWithPopup(auth, provider);
+            userId = result.user.uid;
+            console.log('✅ Signed in with existing Google account');
+          } catch (popupError: any) {
+            if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
+              console.log('⚠️ Popup blocked, switching to redirect method...');
+              localStorage.setItem('expectingSignInBonus', 'true');
+              await signInWithRedirect(auth, provider);
+              return { userId: '', isNewUser: false }; // This won't be reached
+            }
+            throw popupError;
+          }
+        } else if (linkError.code === 'auth/popup-blocked' || linkError.code === 'auth/cancelled-popup-request') {
+          // Popup blocked - try redirect instead
+          console.log('⚠️ Popup blocked, switching to redirect method...');
+          localStorage.setItem('expectingSignInBonus', 'true');
+          await linkWithRedirect(currentUser, provider);
+          return { userId: '', isNewUser: false }; // This won't be reached
+        } else {
+          throw linkError;
+        }
+      }
+    } else {
+      // Regular Google sign-in
+      console.log('📱 Regular Google sign-in...');
+      try {
+        result = await signInWithPopup(auth, provider);
+        userId = result.user.uid;
+      } catch (popupError: any) {
+        if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
+          console.log('⚠️ Popup blocked, switching to redirect method...');
+          localStorage.setItem('expectingSignInBonus', 'true');
+          await signInWithRedirect(auth, provider);
+          return { userId: '', isNewUser: false }; // This won't be reached
+        }
+        throw popupError;
+      }
+    }
+    
+    console.log('👤 User ID:', userId);
+    
+    // Award 3 free customizations for new Google users
+    const userDoc = doc(db, 'users', userId);
+    const userSnap = await getDoc(userDoc);
+    let isNewUser = false;
+    
+    if (!userSnap.exists()) {
+      console.log('🆕 New user - creating with 3 customizations');
+      isNewUser = true;
+      // New user - create with 3 free customizations
+      const newUserData = {
+        customizationsUsed: 0,
+        customizationsAllowed: 3,
+        createdAt: new Date(),
+        isGoogleUser: true,
+      };
+      await setDoc(userDoc, newUserData);
+      console.log('✅ User document created successfully');
+      
+      // Verify the write
+      const verifySnap = await getDoc(userDoc);
+      if (verifySnap.exists()) {
+        console.log('✅ Verified - user data:', verifySnap.data());
+      } else {
+        console.error('❌ User document creation failed - document does not exist after setDoc');
+      }
+    } else {
+      const currentData = userSnap.data();
+      const currentAllowed = currentData.customizationsAllowed || 0;
+      console.log('👥 Existing user - current customizations:', currentAllowed);
+      
+      // Check if user already has the Google login bonus
+      if (currentData.isGoogleUser) {
+        console.log('ℹ️ User already received Google login bonus');
+        isNewUser = false;
+      } else {
+        // First time logging in with Google - increase customizationsAllowed by 3
+        isNewUser = true;
+        const newAllowed = currentAllowed + 3;
+        await updateDoc(userDoc, {
+          customizationsAllowed: newAllowed,
+          isGoogleUser: true,
+        });
+        console.log(`✅ Customizations increased from ${currentAllowed} to ${newAllowed}`);
+        
+        // Verify the update
+        const verifySnap = await getDoc(userDoc);
+        if (verifySnap.exists()) {
+          console.log('✅ Verified - updated data:', verifySnap.data());
+        }
+      }
+    }
+    
+    return { userId, isNewUser };
+  } catch (error: any) {
+    // Handle popup cancellation silently (user just closed it or opened multiple)
+    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+      console.log('ℹ️ User cancelled the sign-in popup');
+      throw new Error('POPUP_CANCELLED'); // Special error code to handle silently
+    }
+    
+    console.error('❌ Error signing in with Google:', error);
+    
+    // Handle other errors
+    if (error.code === 'auth/popup-blocked') {
+      throw new Error('Прозорецът за вход беше блокиран от браузъра. Моля, разрешете изскачащи прозорци за този сайт и опитайте отново.');
+    }
+    
+    throw error;
+  }
+};
+
 interface UserData {
   customizationsUsed: number;
   customizationsAllowed: number;
@@ -52,15 +217,27 @@ interface UserData {
 }
 
 // Get or create user document
-export const getUserData = async (userId: string): Promise<UserData> => {
+export const getUserData = async (userId: string, createIfMissing: boolean = true): Promise<UserData> => {
   const userDoc = doc(db, 'users', userId);
   const userSnap = await getDoc(userDoc);
   
   if (userSnap.exists()) {
-    return userSnap.data() as UserData;
+    const data = userSnap.data() as UserData;
+    console.log('📖 Retrieved user data:', { userId, customizationsAllowed: data.customizationsAllowed, customizationsUsed: data.customizationsUsed });
+    return data;
+  }
+  
+  if (!createIfMissing) {
+    console.log('⚠️ User document not found and createIfMissing is false');
+    return {
+      customizationsUsed: 0,
+      customizationsAllowed: 0,
+      createdAt: new Date(),
+    };
   }
   
   // Create new user with default allowance
+  console.log('🆕 Creating new user document with 0 customizations');
   const newUserData: UserData = {
     customizationsUsed: 0,
     customizationsAllowed: 0, // Default: 0 customizations per user
