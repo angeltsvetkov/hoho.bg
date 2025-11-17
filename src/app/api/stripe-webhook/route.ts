@@ -10,10 +10,13 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 // Mapping of Stripe price IDs to customization amounts
 const PRICE_TO_CUSTOMIZATIONS: Record<string, number> = {
-  // Replace these with your actual Stripe Price IDs from your payment links
+  // Payment link IDs (fallback - these might not be the actual price IDs)
   'plink_1SUBEk2KjEFg0ZKw36nBXRk4': 1,   // 1 персонализация за 1 лв
   'plink_1SUBJt2KjEFg0ZKwm0xmmUUY': 3,   // 3 персонализации за 2 лв
-  'plink_1SUBfv2KjEFg0ZKw4L0zcrln': 10, // 10 персонализации за 3 лв
+  'plink_1SUBfv2KjEFg0ZKw4L0zcrln': 10,  // 10 персонализации за 3 лв
+  
+  // TODO: Update these with actual price IDs from Stripe
+  // Run a test purchase and check the webhook logs to find the real price IDs
 };
 
 export async function POST(request: NextRequest) {
@@ -47,16 +50,17 @@ export async function POST(request: NextRequest) {
       console.log('Checkout completed:', {
         sessionId: session.id,
         customerId: session.customer,
+        clientReferenceId: session.client_reference_id,
         metadata: session.metadata,
       });
 
-      // Get the user ID from metadata (you'll need to pass this when creating the payment link)
-      const userId = session.metadata?.userId;
+      // Get the user ID from client_reference_id (from payment link) or metadata
+      const userId = session.client_reference_id || session.metadata?.userId;
       
       if (!userId) {
-        console.error('No userId found in session metadata');
+        console.error('No userId found in session');
         return NextResponse.json(
-          { error: 'No userId in metadata' },
+          { error: 'No userId in session' },
           { status: 400 }
         );
       }
@@ -64,15 +68,20 @@ export async function POST(request: NextRequest) {
       // Get line items to determine what was purchased
       const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
       
+      console.log('Line items:', JSON.stringify(lineItems.data, null, 2));
+      
       let totalCustomizations = 0;
       
       for (const item of lineItems.data) {
         const priceId = item.price?.id;
+        console.log(`Processing item with price ID: ${priceId}`);
+        
         if (priceId && PRICE_TO_CUSTOMIZATIONS[priceId]) {
           const quantity = item.quantity || 1;
           totalCustomizations += PRICE_TO_CUSTOMIZATIONS[priceId] * quantity;
+          console.log(`Matched! Adding ${PRICE_TO_CUSTOMIZATIONS[priceId] * quantity} customizations`);
         } else {
-          console.warn(`Unknown price ID: ${priceId}`);
+          console.warn(`Unknown price ID: ${priceId} - Please add this to PRICE_TO_CUSTOMIZATIONS mapping`);
         }
       }
 
