@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
+import { db, ensureAnonymousAuth } from "@/lib/firebase";
 import { initializeAnalyticsWithConsent, trackPageView, trackAudioPlay, trackShare } from "@/lib/analytics";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -20,6 +20,7 @@ export default function SharePage() {
   const [message, setMessage] = useState<SharedMessage | null>(null);
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   const shareableUrl = typeof window !== 'undefined' ? window.location.href : '';
 
@@ -36,6 +37,18 @@ export default function SharePage() {
     // Initialize analytics
     initializeAnalyticsWithConsent();
     trackPageView(`/share/${params.id}`);
+    
+    // Get user ID
+    const getUserId = async () => {
+      try {
+        const userId = await ensureAnonymousAuth();
+        setCurrentUserId(userId);
+      } catch (error) {
+        console.error('Error getting user ID:', error);
+      }
+    };
+    
+    getUserId();
     
     const loadSharedMessage = async () => {
       if (!params.id) return;
@@ -188,11 +201,23 @@ export default function SharePage() {
             >
               Политика за бисквитки
             </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
+            <Link
+              href="/contact"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Контакти
+            </Link>
           </div>
           <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
           <p className="text-xs font-bold text-[#d91f63]/60">
             © 2025 BrainEXT. Всички права запазени.
           </p>
+          {currentUserId && (
+            <p className="text-[10px] font-mono text-[#d91f63]/20 select-all">
+              ID: {currentUserId}
+            </p>
+          )}
         </div>
       </footer>
     </main>

@@ -75,6 +75,7 @@ export default function Home() {
   const [customizationsRemaining, setCustomizationsRemaining] = useState<number | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [showCookieBanner, setShowCookieBanner] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -115,6 +116,7 @@ export default function Home() {
     const initAuth = async () => {
       try {
         const userId = await ensureAnonymousAuth();
+        setCurrentUserId(userId); // Store user ID for debugging
         const userData = await getUserData(userId);
         setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
         if (userData.hasListenedToDefault) {
@@ -142,7 +144,7 @@ export default function Home() {
         await audio.play();
         setShowPlayPrompt(false);
         setHasListened(true);
-        
+
         // Mark as listened in Firestore
         const userId = await ensureAnonymousAuth();
         await markDefaultMessageListened(userId);
@@ -161,13 +163,13 @@ export default function Home() {
 
   const handlePlayPrompt = async () => {
     if (!initialSpeechFile) return;
-    
+
     try {
       const audio = new Audio(initialSpeechFile);
       await audio.play();
       setShowPlayPrompt(false);
       setHasListened(true);
-      
+
       // Mark as listened in Firestore
       try {
         const userId = await ensureAnonymousAuth();
@@ -206,7 +208,7 @@ export default function Home() {
 
   const handleShareFacebook = () => {
     if (!shareableUrl) return;
-    
+
     trackShare('facebook');
     const url = encodeURIComponent(shareableUrl);
     const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
@@ -215,10 +217,10 @@ export default function Home() {
 
   const playTextToSpeech = async () => {
     if (isPlaying) return;
-    
+
     setIsPlaying(true);
     setHasListened(true);
-    
+
     // Mark as listened in Firestore if playing default message
     if (!isCustomMessage) {
       try {
@@ -228,27 +230,27 @@ export default function Home() {
         console.error('Error marking default message as listened:', error);
       }
     }
-    
+
     try {
       let audioUrl: string;
-      
+
       // If message is not customized, play the predefined MP3
       if (!isCustomMessage && initialSpeechFile) {
         trackAudioPlay('default', timeLeft.days);
         const audio = new Audio(initialSpeechFile);
-        
+
         audio.onended = () => {
           setIsPlaying(false);
         };
-        
+
         audio.onerror = () => {
           setIsPlaying(false);
         };
-        
+
         await audio.play();
         return;
       }
-      
+
       // For custom messages, check cache or generate new audio
       if (audioCache.has(message)) {
         audioUrl = audioCache.get(message)!;
@@ -268,22 +270,22 @@ export default function Home() {
 
         const audioBlob = await response.blob();
         audioUrl = URL.createObjectURL(audioBlob);
-        
+
         // Cache the audio URL
         setAudioCache(prev => new Map(prev).set(message, audioUrl));
         setLastGeneratedAudioUrl(audioUrl);
       }
-      
+
       const audio = new Audio(audioUrl);
-      
+
       audio.onended = () => {
         setIsPlaying(false);
       };
-      
+
       audio.onerror = () => {
         setIsPlaying(false);
       };
-      
+
       await audio.play();
     } catch (error) {
       console.error('Error playing speech:', error);
@@ -293,14 +295,14 @@ export default function Home() {
 
   const generateAndPlayNewSpeech = async (textToSpeak?: string) => {
     if (isGenerating || isPlaying) return;
-    
+
     const messageText = textToSpeak || message;
-    
+
     setIsGenerating(true);
     try {
       // Ensure anonymous authentication and check limits
       const userId = await ensureAnonymousAuth();
-      
+
       // Check if user can customize
       const canCustomize = await canUserCustomize(userId);
       if (!canCustomize) {
@@ -308,9 +310,9 @@ export default function Home() {
         setIsGenerating(false);
         return;
       }
-      
+
       setIsCustomMessage(true); // Mark as custom message
-      
+
       // Always generate new audio, ignore cache
       const response = await fetch('/api/text-to-speech', {
         method: 'POST',
@@ -326,17 +328,17 @@ export default function Home() {
 
       const audioBlob = await response.blob();
       const audioUrl = URL.createObjectURL(audioBlob);
-      
+
       // Upload to Firebase Storage
       try {
         const timestamp = Date.now();
         const uniqueId = `${timestamp}-${Math.random().toString(36).substring(2, 9)}`;
         const fileName = `speech/${uniqueId}.mp3`;
         const storageRef = ref(storage, fileName);
-        
+
         await uploadBytes(storageRef, audioBlob);
         const firebaseUrl = await getDownloadURL(storageRef);
-        
+
         // Save message data to Firestore
         const messageDoc = doc(db, "sharedMessages", uniqueId);
         await setDoc(messageDoc, {
@@ -344,19 +346,19 @@ export default function Home() {
           audioUrl: firebaseUrl,
           createdAt: timestamp,
         });
-        
+
         console.log('Audio uploaded to Firebase:', firebaseUrl);
-        
+
         // Generate shareable URL
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
         const shareUrl = `${baseUrl}/share/${uniqueId}`;
         setShareableUrl(shareUrl);
-        
+
         // Increment customization count
         await incrementCustomizationCount(userId);
         const userData = await getUserData(userId);
         setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
-        
+
         // Use Firebase URL for download/share
         setLastGeneratedAudioUrl(firebaseUrl);
       } catch (uploadError) {
@@ -365,26 +367,26 @@ export default function Home() {
         setLastGeneratedAudioUrl(audioUrl);
         setShareableUrl(null);
       }
-      
+
       // Update cache with blob URL for playback
       setAudioCache(prev => new Map(prev).set(messageText, audioUrl));
-      
+
       // Track customization
       trackAudioPlay('custom');
-      
+
       setIsGenerating(false);
       setIsPlaying(true);
-      
+
       const audio = new Audio(audioUrl);
-      
+
       audio.onended = () => {
         setIsPlaying(false);
       };
-      
+
       audio.onerror = () => {
         setIsPlaying(false);
       };
-      
+
       await audio.play();
     } catch (error) {
       console.error('Error generating speech:', error);
@@ -458,11 +460,10 @@ export default function Home() {
                 <button
                   onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
                   disabled={isPlaying}
-                  className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${
-                    showPlayPrompt 
-                      ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]' 
+                  className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${showPlayPrompt
+                      ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
                       : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
-                  }`}
+                    }`}
                   aria-label="Чуй посланието"
                 >
                   {isPlaying ? '⏸️' : '▶️'}
@@ -473,11 +474,10 @@ export default function Home() {
               <button
                 onClick={showPlayPrompt ? handlePlayPrompt : playTextToSpeech}
                 disabled={isPlaying}
-                className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${
-                  showPlayPrompt 
-                    ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]' 
+                className={`absolute -right-4 -top-4 flex size-12 items-center justify-center rounded-full text-2xl transition hover:scale-110 disabled:opacity-50 disabled:hover:scale-100 ${showPlayPrompt
+                    ? 'animate-pulse-scale bg-[#ff5a9d] text-white shadow-[0_20px_60px_-15px_rgba(220,53,119,0.8)]'
                     : 'bg-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]'
-                }`}
+                  }`}
                 aria-label="Чуй посланието"
               >
                 {isPlaying ? '⏸️' : '▶️'}
@@ -487,7 +487,7 @@ export default function Home() {
               {message}
             </p>
             {customizationsRemaining !== null && !isCustomMessage && customizationsRemaining > 0 && (
-              <div 
+              <div
                 className="group absolute -bottom-3 -right-3 flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-lg font-black text-white shadow-[0_10px_30px_-10px_rgba(220,53,119,0.8)] transition hover:scale-110"
                 title="Оставащи персонализации"
               >
@@ -543,7 +543,7 @@ export default function Home() {
                   className="inline-flex items-center gap-2 rounded-full border-4 border-white bg-[#1877f2] px-6 py-3 text-base font-black uppercase tracking-wider text-white shadow-[0_20px_60px_-25px_rgba(24,119,242,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(24,119,242,0.7)]"
                 >
                   <svg className="size-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                    <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                   </svg>
                   Facebook
                 </button>
@@ -617,9 +617,9 @@ export default function Home() {
             <p className="mb-8 text-center text-lg font-bold text-[#d91f63]/80">
               Купи персонализации, за да създаваш магични коледни послания.
             </p>
-            
+
             <div className="mb-6 space-y-4">
-              <button 
+              <button
                 onClick={() => trackPurchaseIntent(10, 2.00)}
                 className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="flex items-center justify-center gap-2">
@@ -628,22 +628,22 @@ export default function Home() {
                 </div>
                 <div className="mt-1 text-lg font-bold text-white/90">2.00 лв</div>
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => trackPurchaseIntent(3, 1.00)}
                 className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">3 Персонализации</div>
                 <div className="mt-1 text-lg font-bold text-white/90">1.00 лв</div>
               </button>
-              
-              <button 
+
+              <button
                 onClick={() => trackPurchaseIntent(1, 0.50)}
                 className="w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">1 Персонализация</div>
                 <div className="mt-1 text-lg font-bold text-white/90">0.50 лв</div>
               </button>
             </div>
-            
+
             <button
               onClick={() => setIsPurchaseModalOpen(false)}
               className="w-full rounded-3xl border-4 border-white bg-white px-6 py-3 text-base font-black uppercase tracking-wider text-[#d91f63] shadow-lg transition hover:bg-[#fff0f8]"
@@ -681,6 +681,12 @@ export default function Home() {
         <div className="flex flex-col items-center gap-6">
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
             <Link
+              href="/contact"
+              className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
+            >
+              Свържете се с нас
+            </Link>
+            <Link
               href="/terms"
               className="text-sm font-bold text-[#d91f63] transition hover:scale-105 hover:text-[#ff5a9d]"
             >
@@ -700,11 +706,17 @@ export default function Home() {
             >
               Политика за бисквитки
             </Link>
+            <span className="hidden text-[#ffd7ec] sm:inline">•</span>
           </div>
           <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
           <p className="text-xs font-bold text-[#d91f63]/60">
             © 2025 BrainEXT. Всички права запазени.
           </p>
+          {currentUserId && (
+            <p className="text-[10px] font-mono text-[#d91f63]/20 select-all">
+              ID: {currentUserId}
+            </p>
+          )}
         </div>
       </footer>
 
