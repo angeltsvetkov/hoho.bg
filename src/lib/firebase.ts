@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, signInWithRedirect, linkWithPopup, linkWithRedirect, getRedirectResult, type Auth } from 'firebase/auth';
+import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, linkWithPopup } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -49,7 +49,7 @@ export const isAnonymousUser = (): boolean => {
 };
 
 // Helper function to sign in with Google
-export const signInWithGoogle = async (useRedirect: boolean = false): Promise<{ userId: string; isNewUser: boolean }> => {
+export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: boolean }> => {
   try {
     console.log('🔐 Starting Google sign-in...');
     
@@ -65,20 +65,6 @@ export const signInWithGoogle = async (useRedirect: boolean = false): Promise<{ 
     provider.addScope('email');
     const wasAnonymous = currentUser?.isAnonymous ?? false;
     console.log('👤 Current user anonymous:', wasAnonymous);
-    
-    if (useRedirect) {
-      // Use redirect method (better for Arc and mobile browsers)
-      console.log('🔄 Using redirect method...');
-      // Store that we're expecting a new user bonus after redirect
-      localStorage.setItem('expectingSignInBonus', 'true');
-      if (wasAnonymous && currentUser) {
-        await linkWithRedirect(currentUser, provider);
-      } else {
-        await signInWithRedirect(auth, provider);
-      }
-      // After redirect, this function won't return - user will be redirected
-      return { userId: '', isNewUser: false }; // This won't be reached
-    }
     
     // Use popup method
     let result;
@@ -100,20 +86,11 @@ export const signInWithGoogle = async (useRedirect: boolean = false): Promise<{ 
             userId = result.user.uid;
             console.log('✅ Signed in with existing Google account');
           } catch (popupError: any) {
-            if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
-              console.log('⚠️ Popup blocked, switching to redirect method...');
-              localStorage.setItem('expectingSignInBonus', 'true');
-              await signInWithRedirect(auth, provider);
-              return { userId: '', isNewUser: false }; // This won't be reached
-            }
             throw popupError;
           }
         } else if (linkError.code === 'auth/popup-blocked' || linkError.code === 'auth/cancelled-popup-request') {
-          // Popup blocked - try redirect instead
-          console.log('⚠️ Popup blocked, switching to redirect method...');
-          localStorage.setItem('expectingSignInBonus', 'true');
-          await linkWithRedirect(currentUser, provider);
-          return { userId: '', isNewUser: false }; // This won't be reached
+          console.log('⚠️ Popup blocked while linking accounts');
+          throw linkError;
         } else {
           throw linkError;
         }
@@ -125,12 +102,6 @@ export const signInWithGoogle = async (useRedirect: boolean = false): Promise<{ 
         result = await signInWithPopup(auth, provider);
         userId = result.user.uid;
       } catch (popupError: any) {
-        if (popupError.code === 'auth/popup-blocked' || popupError.code === 'auth/cancelled-popup-request') {
-          console.log('⚠️ Popup blocked, switching to redirect method...');
-          localStorage.setItem('expectingSignInBonus', 'true');
-          await signInWithRedirect(auth, provider);
-          return { userId: '', isNewUser: false }; // This won't be reached
-        }
         throw popupError;
       }
     }

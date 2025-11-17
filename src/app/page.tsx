@@ -3,11 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { storage, db, auth, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, isAnonymousUser, signInWithGoogle } from "@/lib/firebase";
-import { getRedirectResult } from "firebase/auth";
+import { storage, db, auth, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, signInWithGoogle } from "@/lib/firebase";
 import { initializeAnalyticsWithConsent, setAnalyticsConsent, trackPageView, trackAudioPlay, trackCustomization, trackShare, trackPurchaseIntent } from "@/lib/analytics";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc } from "firebase/firestore";
+import type { User } from "firebase/auth";
 
 type TimeLeft = {
   totalMs: number;
@@ -181,43 +181,31 @@ export default function Home() {
 
     const initAuth = async () => {
       try {
-        // Check for redirect result first (for Arc browser and mobile)
-        const redirectResult = await getRedirectResult(auth);
-        if (redirectResult?.user) {
-          console.log('✅ Redirect sign-in successful:', redirectResult.user.uid);
-          // Update user data after redirect
-          const userData = await getUserData(redirectResult.user.uid);
-          setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
-          
-          // Check if we were expecting a sign-in bonus (set before redirect)
-          const expectingBonus = localStorage.getItem('expectingSignInBonus');
-          if (expectingBonus === 'true') {
-            localStorage.removeItem('expectingSignInBonus');
-            // Check if user actually received customizations (is new or got bonus)
-            const isNewUser = userData.customizationsUsed === 0 && userData.customizationsAllowed >= 3;
-            if (isNewUser) {
-              alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
-            }
-          }
-        }
-        
-        // Wait for auth state to be restored (e.g., after page refresh)
-        let authUser: any = null;
-        await new Promise<void>((resolve) => {
+        console.log('🚀 Starting auth initialization...');
+
+        console.log('⏳ Waiting for auth state...');
+        const authUser = await new Promise<User | null>((resolve) => {
           const unsubscribe = auth.onAuthStateChanged((user) => {
-            authUser = user;
+            console.log('🔐 onAuthStateChanged fired:', {
+              uid: user?.uid,
+              isAnonymous: user?.isAnonymous,
+              displayName: user?.displayName,
+              photoURL: user?.photoURL,
+              email: user?.email,
+              providerId: user?.providerData?.[0]?.providerId,
+            });
             unsubscribe();
-            resolve();
+            resolve(user);
           });
         });
-        
-        console.log('🔐 Auth state restored:', { 
-          uid: authUser?.uid, 
+
+        console.log('🔐 Auth state restored:', {
+          uid: authUser?.uid,
           isAnonymous: authUser?.isAnonymous,
           displayName: authUser?.displayName,
-          photoURL: authUser?.photoURL 
+          photoURL: authUser?.photoURL,
         });
-        
+
         // Set user profile if logged in with Google
         if (authUser && !authUser.isAnonymous) {
           const profileData = {
@@ -261,14 +249,17 @@ export default function Home() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user && !user.isAnonymous) {
         console.log('🔄 Auth state changed: Google user detected', {
+          uid: user.uid,
           displayName: user.displayName,
-          photoURL: user.photoURL
+          photoURL: user.photoURL,
+          email: user.email
         });
         setIsAnonymous(false);
         setUserProfile({
           photoURL: user.photoURL,
           displayName: user.displayName,
         });
+        console.log('✅ Avatar URL set:', user.photoURL);
       } else if (user?.isAnonymous) {
         console.log('🔄 Auth state changed: Anonymous user detected');
         setIsAnonymous(true);
@@ -610,10 +601,12 @@ export default function Home() {
                 className="flex items-center gap-2 transition hover:opacity-80"
               >
                 {userProfile.photoURL ? (
-                  <img
+                  <Image
                     src={userProfile.photoURL}
                     alt={userProfile.displayName || 'User'}
-                    className="size-8 rounded-full sm:size-10"
+                    width={40}
+                    height={40}
+                    className="size-8 rounded-full object-cover sm:size-10"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
@@ -675,9 +668,8 @@ export default function Home() {
               // For anonymous users, trigger sign-in directly
               try {
                 console.log('🔄 Starting Google sign-in process...');
-                // Use redirect on mobile devices for better compatibility
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                const { userId, isNewUser } = await signInWithGoogle(isMobile);
+                // Always use redirect method
+                const { userId, isNewUser } = await signInWithGoogle();
                 console.log('✅ Sign-in complete, user ID:', userId);
                 setCurrentUserId(userId);
                 setIsAnonymous(false);
@@ -702,13 +694,14 @@ export default function Home() {
                 if (isNewUser) {
                   alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
                 }
-              } catch (error: any) {
-                if (error.message === 'POPUP_CANCELLED') {
+              } catch (error) {
+                const typedError = error as { message?: string };
+                if (typedError?.message === 'POPUP_CANCELLED') {
                   console.log('ℹ️ Sign-in cancelled by user');
                   return;
                 }
                 console.error('❌ Login failed:', error);
-                alert(error.message || 'Неуспешен вход. Моля, опитайте отново.');
+                alert(typedError?.message || 'Неуспешен вход. Моля, опитайте отново.');
               }
             } else {
               // For logged-in users, show purchase modal
@@ -906,9 +899,8 @@ export default function Home() {
                     try {
                       setIsPurchaseModalOpen(false);
                       console.log('🔄 Starting Google sign-in process...');
-                      // Use redirect on mobile devices for better compatibility
-                      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                      const { userId, isNewUser } = await signInWithGoogle(isMobile);
+                      // Always use redirect method
+                      const { userId, isNewUser } = await signInWithGoogle();
                       console.log('✅ Sign-in complete, user ID:', userId);
                       setCurrentUserId(userId);
                       setIsAnonymous(false);
@@ -933,14 +925,15 @@ export default function Home() {
                       if (isNewUser) {
                         alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
                       }
-                    } catch (error: any) {
+                    } catch (error) {
+                      const typedError = error as { message?: string };
                       // Don't show error if user just cancelled the popup
-                      if (error.message === 'POPUP_CANCELLED') {
+                      if (typedError?.message === 'POPUP_CANCELLED') {
                         console.log('ℹ️ Sign-in cancelled by user');
                         return;
                       }
                       console.error('❌ Login failed:', error);
-                      alert(error.message || 'Неуспешен вход. Моля, опитайте отново.');
+                      alert(typedError?.message || 'Неуспешен вход. Моля, опитайте отново.');
                     }
                   }}
                   className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#00ff00] to-[#00cc00] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(0,255,0,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(0,255,0,0.9)]">
