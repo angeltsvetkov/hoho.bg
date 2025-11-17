@@ -620,37 +620,39 @@ export default function Home() {
 
             <div className="mb-6 space-y-4">
               <a
-                href="https://buy.stripe.com/8x2aEQ7Dg1A176u1Z3a7C00"
+                href="https://buy.stripe.com/6oU3cobTw3I9gH4avza7C02"
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(1, 1)}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="text-2xl font-black text-white">1 Персонализация</div>
-                <div className="mt-1 text-lg font-bold text-white/90">1 лв</div>
+                onClick={() => trackPurchaseIntent(10, 3)}
+                className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(220,53,119,0.9)]">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                  <span className="rounded-full bg-[#00ff00] px-4 py-1 text-sm font-black text-[#d91f63] shadow-lg animate-pulse-scale">
+                    Най-изгодно! 🎁
+                  </span>
+                </div>
+                <div className="text-3xl font-black text-white">10 Персонализации</div>
+                <div className="mt-2 text-xl font-bold text-white/90">3 лв</div>
+                <div className="mt-1 text-sm font-bold text-white/70">Само 0.30 лв на персонализация</div>
               </a>
-            </div>
 
-            <div className="mb-6 space-y-4">
               <a
                 href="https://buy.stripe.com/eVq00c4r4diJ4YmdHLa7C01"
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(1, 2)}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                onClick={() => trackPurchaseIntent(3, 2)}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
                 <div className="text-2xl font-black text-white">3 Персонализации</div>
                 <div className="mt-1 text-lg font-bold text-white/90">2 лв</div>
               </a>
-            </div>
 
-            <div className="mb-6 space-y-4">
               <a
-                href="https://buy.stripe.com/6oU3cobTw3I9gH4avza7C02"
+                href="https://buy.stripe.com/8x2aEQ7Dg1A176u1Z3a7C00"
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => trackPurchaseIntent(1, 3)}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
-                <div className="text-2xl font-black text-white">10 Персонализации</div>
-                <div className="mt-1 text-lg font-bold text-white/90">3 лв</div>
+                onClick={() => trackPurchaseIntent(1, 1)}
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)]">
+                <div className="text-2xl font-black text-white">1 Персонализация</div>
+                <div className="mt-1 text-lg font-bold text-white/90">1 лв</div>
               </a>
             </div>
 
