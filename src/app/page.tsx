@@ -675,7 +675,9 @@ export default function Home() {
               // For anonymous users, trigger sign-in directly
               try {
                 console.log('🔄 Starting Google sign-in process...');
-                const { userId, isNewUser } = await signInWithGoogle();
+                // Use redirect on mobile devices for better compatibility
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                const { userId, isNewUser } = await signInWithGoogle(isMobile);
                 console.log('✅ Sign-in complete, user ID:', userId);
                 setCurrentUserId(userId);
                 setIsAnonymous(false);
@@ -904,7 +906,9 @@ export default function Home() {
                     try {
                       setIsPurchaseModalOpen(false);
                       console.log('🔄 Starting Google sign-in process...');
-                      const { userId, isNewUser } = await signInWithGoogle();
+                      // Use redirect on mobile devices for better compatibility
+                      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                      const { userId, isNewUser } = await signInWithGoogle(isMobile);
                       console.log('✅ Sign-in complete, user ID:', userId);
                       setCurrentUserId(userId);
                       setIsAnonymous(false);
