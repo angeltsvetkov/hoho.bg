@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { storage, db, auth, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, signInWithGoogle } from "@/lib/firebase";
+import { storage, db, auth, ensureAnonymousAuth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, signInWithGoogle, awardReferralBonus, handleRedirectResult } from "@/lib/firebase";
 import { initializeAnalyticsWithConsent, setAnalyticsConsent, trackPageView, trackAudioPlay, trackCustomization, trackShare, trackPurchaseIntent } from "@/lib/analytics";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc } from "firebase/firestore";
@@ -81,6 +81,7 @@ export default function Home() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [userProfile, setUserProfile] = useState<{ photoURL: string | null; displayName: string | null } | null>(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isReferralCopied, setIsReferralCopied] = useState(false);
 
   const handlePurchase = async (customizations: number, price: number) => {
     if (!currentUserId) {
@@ -175,6 +176,58 @@ export default function Home() {
     }
   };
 
+  const handleCopyReferralLink = async () => {
+    if (!currentUserId || typeof window === 'undefined') {
+      alert('Моля, влезте в профила си, за да поканите приятел.');
+      return;
+    }
+
+    const referralLink = `${window.location.origin}?ref=${currentUserId}`;
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(referralLink);
+      } else {
+        const tempInput = document.createElement('textarea');
+        tempInput.value = referralLink;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        document.execCommand('copy');
+        document.body.removeChild(tempInput);
+      }
+      setIsReferralCopied(true);
+      setTimeout(() => setIsReferralCopied(false), 2000);
+    } catch (copyError) {
+      console.error('❌ Error copying referral link:', copyError);
+      alert('Не успяхме да копираме линка. Опитайте отново.');
+    }
+  };
+
+  const processReferralBonus = async (userId: string) => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const referrerId = urlParams.get('ref');
+    if (!referrerId || referrerId === userId) {
+      return;
+    }
+
+    const storageKey = `referral_processed_${userId}_${referrerId}`;
+    if (localStorage.getItem(storageKey) === 'true') {
+      console.log('ℹ️ Referral already processed for this user.');
+      return;
+    }
+
+    try {
+      await awardReferralBonus(referrerId, userId);
+      localStorage.setItem(storageKey, 'true');
+      alert('🎉 Благодарим! Подари 5 персонализации на твоя приятел.');
+    } catch (error) {
+      console.error('❌ Error processing referral:', error);
+    } finally {
+      window.history.replaceState({}, '', '/');
+    }
+  };
+
   // Sign in anonymously on page load and load user data
   useEffect(() => {
     if (!mounted) return;
@@ -182,6 +235,16 @@ export default function Home() {
     const initAuth = async () => {
       try {
         console.log('🚀 Starting auth initialization...');
+
+        // First, check for redirect result from Google sign-in
+        const redirectResult = await handleRedirectResult();
+        if (redirectResult) {
+          console.log('✅ Redirect sign-in complete:', redirectResult);
+          // Show success message
+          if (redirectResult.isNewUser) {
+            alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
+          }
+        }
 
         console.log('⏳ Waiting for auth state...');
         const authUser = await new Promise<User | null>((resolve) => {
@@ -223,6 +286,9 @@ export default function Home() {
           if (userData.hasListenedToDefault) {
             setHasListened(true);
           }
+
+          await processReferralBonus(authUser.uid);
+
         } else {
           // Anonymous user
           setIsAnonymous(true);
@@ -593,8 +659,22 @@ export default function Home() {
       {/* Combined header badge - user profile + customizations */}
       {!isAnonymous && userProfile && customizationsRemaining !== null && (
         <div className="profile-menu-container fixed right-4 top-4 z-50 sm:right-6 sm:top-6">
-          <div className="relative">
-            <div className="flex items-center gap-2 rounded-full border-2 border-white bg-white p-1 shadow-lg sm:gap-3 sm:p-2">
+          <div className="flex flex-col items-end gap-3">
+            <button
+              onClick={handleCopyReferralLink}
+              className="group flex items-center gap-3 rounded-3xl border-2 border-white bg-linear-to-r from-[#f9d423] via-[#ff4e50] to-[#d91f63] px-4 py-2 text-left text-white shadow-[0_15px_40px_-20px_rgba(217,31,99,0.9)] transition hover:scale-105"
+            >
+              <div className="flex size-10 items-center justify-center rounded-full bg-white/20 text-2xl">🎁</div>
+              <div className="leading-tight">
+                <p className="text-xs font-black uppercase tracking-wider text-white/80">Покани приятел</p>
+                <p className="text-sm font-black">
+                  {isReferralCopied ? '✅ Линкът е копиран' : '+5 персонализации'}
+                </p>
+              </div>
+            </button>
+
+            <div className="relative">
+              <div className="flex items-center gap-2 rounded-full border-2 border-white bg-white p-1 shadow-lg sm:gap-3 sm:p-2">
               {/* User profile section */}
               <button
                 onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -656,6 +736,7 @@ export default function Home() {
                 </button>
               </div>
             )}
+            </div>
           </div>
         </div>
       )}
@@ -696,6 +777,11 @@ export default function Home() {
                 }
               } catch (error) {
                 const typedError = error as { message?: string };
+                // Handle redirect in progress (page will reload)
+                if (typedError?.message === 'REDIRECT_IN_PROGRESS') {
+                  console.log('🔄 Redirecting to Google sign-in...');
+                  return; // Don't show any error
+                }
                 if (typedError?.message === 'POPUP_CANCELLED') {
                   console.log('ℹ️ Sign-in cancelled by user');
                   return;
@@ -888,11 +974,11 @@ export default function Home() {
             <h2 className="mb-4 text-center text-3xl font-black text-[#d91f63]">
               Купи персонализации 🎅
             </h2>
-            <p className="mb-8 text-center text-lg font-bold text-[#d91f63]/80">
+            <p className="mb-8 text-center text-base font-bold text-[#d91f63]/80 sm:text-lg">
               Купи персонализации, за да създаваш магични коледни послания.
             </p>
 
-            <div className="mb-6 space-y-4">
+            <div className="mb-6 space-y-5">
               {isAnonymous && (
                 <button
                   onClick={async () => {
@@ -927,6 +1013,11 @@ export default function Home() {
                       }
                     } catch (error) {
                       const typedError = error as { message?: string };
+                      // Handle redirect in progress (page will reload)
+                      if (typedError?.message === 'REDIRECT_IN_PROGRESS') {
+                        console.log('🔄 Redirecting to Google sign-in...');
+                        return; // Don't show any error
+                      }
                       // Don't show error if user just cancelled the popup
                       if (typedError?.message === 'POPUP_CANCELLED') {
                         console.log('ℹ️ Sign-in cancelled by user');
@@ -936,54 +1027,105 @@ export default function Home() {
                       alert(typedError?.message || 'Неуспешен вход. Моля, опитайте отново.');
                     }
                   }}
-                  className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#00ff00] to-[#00cc00] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(0,255,0,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(0,255,0,0.9)]">
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                    <span className="rounded-full bg-[#ffff00] px-4 py-1 text-sm font-black text-[#00cc00] shadow-lg animate-pulse-scale">
-                      БЕЗПЛАТНО! 🎉
-                    </span>
+                  className="group relative block w-full overflow-hidden rounded-3xl border-4 border-white bg-linear-to-br from-[#ff0066] via-[#ff3388] to-[#d91f63] px-6 pb-8 pt-16 text-center shadow-[0_30px_100px_-25px_rgba(255,0,102,0.9)] transition-all duration-300 hover:scale-[1.03] hover:shadow-[0_40px_120px_-20px_rgba(255,0,102,1)] sm:px-8 sm:pb-10 sm:pt-20">
+                  {/* Decorative ribbons */}
+                  <div className="pointer-events-none absolute inset-y-0 left-1/2 w-4 -translate-x-1/2 bg-linear-to-b from-white/50 via-white/40 to-white/50 shadow-inner" aria-hidden />
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 bg-linear-to-r from-white/50 via-white/40 to-white/50 shadow-inner" aria-hidden />
+                  
+                  {/* Gift bow */}
+                  <div className="pointer-events-none absolute left-1/2 top-6 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 drop-shadow-lg sm:top-8" aria-hidden>
+                    <span className="h-8 w-8 -rotate-12 rounded-3xl border-3 border-white/90 bg-white/50 shadow-md sm:h-10 sm:w-10" />
+                    <span className="h-8 w-8 rotate-12 rounded-3xl border-3 border-white/90 bg-white/50 shadow-md sm:h-10 sm:w-10" />
+                    <span className="h-5 w-5 rounded-full border-2 border-white bg-white shadow-md sm:h-6 sm:w-6" />
                   </div>
-                  <div className="text-3xl font-black text-white">
-                    Влез и вземи 3 персонализации
+                  
+                  {/* Content */}
+                  <div className="relative z-10 space-y-3">
+                    <div className="text-4xl font-black leading-tight text-white drop-shadow-lg sm:text-5xl">
+                      Влез с Google
+                    </div>
+                    <div className="mx-auto flex max-w-sm items-center justify-center gap-2 text-2xl font-black text-white/95 drop-shadow-md sm:text-3xl">
+                      <span className="text-3xl sm:text-4xl">🎅</span>
+                      <span>3 персонализации</span>
+                    </div>
+                    <div className="text-base font-bold text-white/90 drop-shadow sm:text-lg">
+                      Специален коледен подарък за теб!
+                    </div>
+                    
+                    {/* CTA emphasis */}
+                    <div className="mt-6 flex items-center justify-center gap-2 text-sm font-black uppercase tracking-wider text-white/80 sm:text-base">
+                      <span className="animate-bounce">👉</span>
+                      <span>Кликни тук</span>
+                      <span className="animate-bounce">👈</span>
+                    </div>
                   </div>
-                  <div className="mt-2 text-xl font-bold text-white/90">🎁 Подарък при регистрация</div>
+                  
+                  {/* Sparkle effects */}
+                  <div className="pointer-events-none absolute right-6 top-8 animate-pulse text-2xl opacity-80 sm:text-3xl" aria-hidden>✨</div>
+                  <div className="pointer-events-none absolute bottom-6 left-8 animate-pulse text-xl opacity-70 delay-300 sm:text-2xl" aria-hidden>⭐</div>
+                  <div className="pointer-events-none absolute bottom-8 right-10 animate-pulse text-xl opacity-75 delay-500 sm:text-2xl" aria-hidden>💫</div>
                 </button>
               )}
 
               <button
                 onClick={() => handlePurchase(10, 3)}
                 disabled={isProcessingPurchase}
-                className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-6 text-center shadow-[0_25px_80px_-20px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(220,53,119,0.9)] disabled:opacity-50 disabled:cursor-not-allowed">
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                  <span className="rounded-full bg-[#00ff00] px-4 py-1 text-sm font-black text-[#d91f63] shadow-lg animate-pulse-scale">
+                className="relative block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-5 pb-6 pt-12 text-center shadow-[0_25px_80px_-20px_rgba(220,53,119,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(220,53,119,0.9)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:py-6">
+                <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 sm:-translate-y-1/3">
+                  <span className="rounded-full bg-[#00ff00] px-4 py-1 text-xs font-black text-[#d91f63] shadow-lg animate-pulse-scale sm:text-sm">
                     Най-изгодно! 🎁
                   </span>
                 </div>
-                <div className="text-3xl font-black text-white">
+                <div className="text-2xl font-black text-white sm:text-3xl">
                   {isProcessingPurchase ? 'Зареждане...' : '10 Персонализации'}
                 </div>
-                <div className="mt-2 text-xl font-bold text-white/90">3 лв</div>
-                <div className="mt-1 text-sm font-bold text-white/70">Само 0.30 лв на персонализация</div>
+                <div className="mt-2 text-base font-bold text-white/90 sm:text-xl">3 лв</div>
+                <div className="mt-1 text-xs font-bold text-white/70 sm:text-sm">Само 0.30 лв на персонализация</div>
               </button>
 
               <button
                 onClick={() => handlePurchase(3, 2)}
                 disabled={isProcessingPurchase}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:opacity-50 disabled:cursor-not-allowed">
-                <div className="text-2xl font-black text-white">
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ff85b8] to-[#ff5a9d] px-5 py-5 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:py-4">
+                <div className="text-2xl font-black text-white sm:text-3xl">
                   {isProcessingPurchase ? 'Зареждане...' : '3 Персонализации'}
                 </div>
-                <div className="mt-1 text-lg font-bold text-white/90">2 лв</div>
+                <div className="mt-1 text-base font-bold text-white/90 sm:text-lg">2 лв</div>
               </button>
 
               <button
                 onClick={() => handlePurchase(1, 1)}
                 disabled={isProcessingPurchase}
-                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-6 py-4 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:opacity-50 disabled:cursor-not-allowed">
-                <div className="text-2xl font-black text-white">
+                className="block w-full rounded-3xl border-4 border-white bg-linear-to-r from-[#ffb3d9] to-[#ff85b8] px-5 py-5 text-center shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:scale-105 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.7)] disabled:cursor-not-allowed disabled:opacity-50 sm:px-6 sm:py-4">
+                <div className="text-2xl font-black text-white sm:text-3xl">
                   {isProcessingPurchase ? 'Зареждане...' : '1 Персонализация'}
                 </div>
-                <div className="mt-1 text-lg font-bold text-white/90">1 лв</div>
+                <div className="mt-1 text-base font-bold text-white/90 sm:text-lg">1 лв</div>
               </button>
+
+              {!isAnonymous && currentUserId && (
+                <button
+                  onClick={handleCopyReferralLink}
+                  className="relative block w-full overflow-hidden rounded-3xl border-4 border-white bg-linear-to-br from-[#9b59b6] via-[#8e44ad] to-[#6c3483] px-5 py-6 text-center shadow-[0_25px_80px_-20px_rgba(142,68,173,0.8)] transition hover:scale-105 hover:shadow-[0_30px_90px_-15px_rgba(142,68,173,0.9)] sm:px-6">
+                  <div className="pointer-events-none absolute inset-y-0 left-1/2 w-4 -translate-x-1/2 bg-linear-to-b from-white/50 via-white/40 to-white/50 shadow-inner" aria-hidden />
+                  <div className="pointer-events-none absolute inset-x-0 top-1/2 h-4 -translate-y-1/2 bg-linear-to-r from-white/50 via-white/40 to-white/50 shadow-inner" aria-hidden />
+                  <div className="pointer-events-none absolute left-1/2 top-4 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 drop-shadow-lg" aria-hidden>
+                    <span className="h-7 w-7 -rotate-12 rounded-3xl border-3 border-white/90 bg-white/50 shadow-md sm:h-8 sm:w-8" />
+                    <span className="h-7 w-7 rotate-12 rounded-3xl border-3 border-white/90 bg-white/50 shadow-md sm:h-8 sm:w-8" />
+                    <span className="h-4 w-4 rounded-full border-2 border-white bg-white shadow-md sm:h-5 sm:w-5" />
+                  </div>
+                  <div className="relative z-10 space-y-2">
+                    <div className="text-2xl font-black text-white drop-shadow-lg sm:text-3xl">
+                      🎁 Покани приятел
+                    </div>
+                    <div className="text-base font-bold text-white/90 drop-shadow sm:text-lg">
+                      {isReferralCopied ? '✅ Копиран!' : 'Получи 5 персонализации'}
+                    </div>
+                  </div>
+                  <div className="pointer-events-none absolute bottom-4 right-4 animate-pulse text-xl opacity-70 sm:text-2xl" aria-hidden>✨</div>
+                  <div className="pointer-events-none absolute left-4 top-12 animate-pulse text-lg opacity-60 delay-300 sm:text-xl" aria-hidden>⭐</div>
+                </button>
+              )}
             </div>
 
             <button

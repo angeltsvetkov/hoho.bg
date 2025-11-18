@@ -1,20 +1,45 @@
 # Google Authentication Setup
 
 ## Overview
-The app now supports Google Sign-In to reward new users with 3 free personalizations.
+The app supports Google Sign-In to reward new users with 3 free personalizations. The authentication system uses a hybrid approach with both popup and redirect methods to ensure compatibility with all browsers, including Arc browser where popups are blocked by default.
 
 ## Implementation Details
 
 ### Frontend Changes
 1. **New Functions in `src/lib/firebase.ts`:**
    - `isAnonymousUser()`: Checks if current user is anonymous
-   - `signInWithGoogle()`: Handles Google sign-in and awards 3 free customizations
+   - `canUsePopup()`: Detects browser popup support (e.g., Arc browser detection)
+   - `signInWithGoogle()`: Handles Google sign-in with automatic popup/redirect fallback
+   - `handleRedirectResult()`: Processes redirect results after Google sign-in
+   - Awards 3 free customizations for new Google users
 
 2. **UI Updates in `src/app/page.tsx`:**
    - Added "Log in to get 3 personalizations" button in purchase modal
    - Only shown to anonymous users
    - Green gradient with "FREE!" badge to attract attention
    - Positioned above paid options
+   - Handles both popup and redirect authentication flows
+
+### Authentication Methods
+
+The system automatically chooses the best authentication method:
+
+- **Popup Method** (faster): Used in Chrome, Firefox, Safari
+  - Opens Google sign-in in a popup window
+  - User signs in and popup closes
+  - Instant authentication without page reload
+
+- **Redirect Method** (more reliable): Used in Arc browser and when popups are blocked
+  - Redirects entire page to Google sign-in
+  - User signs in on Google's page
+  - Redirects back to app
+  - Processes authentication on return
+
+### Arc Browser Support
+
+The system specifically detects Arc browser and automatically uses the redirect method since Arc blocks popups by default. No user configuration needed!
+
+See [GOOGLE_AUTH_REDIRECT_FIX.md](./GOOGLE_AUTH_REDIRECT_FIX.md) for detailed technical implementation.
 
 ### Firebase Configuration Required
 
@@ -47,14 +72,22 @@ To enable Google authentication, you need to configure it in the Firebase Consol
 
 ### User Flow
 
-1. **Anonymous User:**
+1. **Anonymous User (Browsers with popup support):**
    - Visits site → automatically signed in anonymously
    - Opens purchase modal → sees "Log in to get 3 personalizations" option
    - Clicks button → Google sign-in popup appears
-   - Signs in → receives 3 free customizations
+   - Signs in → popup closes, receives 3 free customizations
    - Success alert: "🎉 Добре дошли! Получихте 3 безплатни персонализации!"
 
-2. **Returning Google User:**
+2. **Anonymous User (Arc browser or popup blocked):**
+   - Visits site → automatically signed in anonymously
+   - Opens purchase modal → sees "Log in to get 3 personalizations" option
+   - Clicks button → page redirects to Google sign-in
+   - Signs in on Google's page → redirects back to app
+   - Receives 3 free customizations
+   - Success alert: "🎉 Добре дошли! Получихте 3 безплатни персонализации!"
+
+3. **Returning Google User:**
    - Visits site → automatically signed in with Google account
    - Purchase modal does NOT show free login option (already a Google user)
    - Shows only paid options

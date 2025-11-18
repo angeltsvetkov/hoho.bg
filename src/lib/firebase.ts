@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, linkWithPopup } from 'firebase/auth';
+import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithRedirect, linkWithRedirect, getRedirectResult } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -48,6 +48,129 @@ export const isAnonymousUser = (): boolean => {
   return auth.currentUser?.isAnonymous ?? true;
 };
 
+// Helper to detect if popups are supported/allowed
+const canUsePopup = (): boolean => {
+  try {
+    // Check if we're in a browser environment
+    if (typeof window === 'undefined') return false;
+    
+    // Check for localhost - always use redirect on localhost to avoid COOP issues
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('🌐 Localhost detected, using redirect method to avoid COOP issues');
+      return false;
+    }
+    
+    // Try to detect Arc browser and other strict browsers
+    const userAgent = navigator.userAgent.toLowerCase();
+    // Arc browser is based on Chromium but doesn't identify itself clearly
+    // Better to use redirect by default for compatibility
+    const isArc = userAgent.includes('arc');
+    
+    // Arc and similar browsers block popups by default, use redirect
+    if (isArc) {
+      console.log('🌐 Arc browser detected, using redirect method');
+      return false;
+    }
+    
+    // Default to redirect for better compatibility
+    // Popup method has issues with COOP headers in development
+    return false;
+  } catch {
+    return false;
+  }
+};
+
+// Helper function to check and handle redirect result
+export const handleRedirectResult = async (): Promise<{ userId: string; isNewUser: boolean } | null> => {
+  try {
+    console.log('🔍 Checking for redirect result...');
+    
+    // Check if we just came back from a redirect
+    // The URL will have been cleaned by Firebase, but we can check sessionStorage
+    const pendingRedirect = sessionStorage.getItem('pendingRedirect');
+    if (pendingRedirect) {
+      console.log('📍 Pending redirect detected in session storage');
+      sessionStorage.removeItem('pendingRedirect');
+    }
+    
+    const result = await getRedirectResult(auth);
+    
+    if (!result) {
+      console.log('ℹ️ No redirect result found');
+      // Check if user is signed in (might have been processed already)
+      if (auth.currentUser && !auth.currentUser.isAnonymous) {
+        console.log('✅ User is already signed in with Google (redirect was already processed)');
+        const userId = auth.currentUser.uid;
+        
+        // Check if we need to award customizations
+        const userDoc = doc(db, 'users', userId);
+        const userSnap = await getDoc(userDoc);
+        let isNewUser = false;
+        
+        if (!userSnap.exists()) {
+          console.log('🆕 New user - creating with 3 customizations');
+          isNewUser = true;
+          await setDoc(userDoc, {
+            customizationsUsed: 0,
+            customizationsAllowed: 3,
+            createdAt: new Date(),
+            isGoogleUser: true,
+          });
+          console.log('✅ User document created successfully');
+          return { userId, isNewUser };
+        } else if (!userSnap.data().isGoogleUser) {
+          console.log('🎁 Existing anonymous user, awarding Google login bonus');
+          isNewUser = true;
+          const currentAllowed = userSnap.data().customizationsAllowed || 0;
+          await updateDoc(userDoc, {
+            customizationsAllowed: currentAllowed + 3,
+            isGoogleUser: true,
+          });
+          console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
+          return { userId, isNewUser };
+        }
+      }
+      return null;
+    }
+    
+    console.log('✅ Redirect sign-in successful');
+    const userId = result.user.uid;
+    
+    // Award customizations (same logic as popup)
+    const userDoc = doc(db, 'users', userId);
+    const userSnap = await getDoc(userDoc);
+    let isNewUser = false;
+    
+    if (!userSnap.exists()) {
+      console.log('🆕 New user - creating with 3 customizations');
+      isNewUser = true;
+      await setDoc(userDoc, {
+        customizationsUsed: 0,
+        customizationsAllowed: 3,
+        createdAt: new Date(),
+        isGoogleUser: true,
+      });
+      console.log('✅ User document created successfully');
+    } else {
+      const currentData = userSnap.data();
+      if (!currentData.isGoogleUser) {
+        isNewUser = true;
+        const currentAllowed = currentData.customizationsAllowed || 0;
+        await updateDoc(userDoc, {
+          customizationsAllowed: currentAllowed + 3,
+          isGoogleUser: true,
+        });
+        console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
+      }
+    }
+    
+    return { userId, isNewUser };
+  } catch (error) {
+    console.error('❌ Error handling redirect result:', error);
+    return null;
+  }
+};
+
 // Helper function to sign in with Google
 export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: boolean }> => {
   try {
@@ -66,7 +189,9 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
     const wasAnonymous = currentUser?.isAnonymous ?? false;
     console.log('👤 Current user anonymous:', wasAnonymous);
     
-    // Use popup method
+    const usePopup = canUsePopup();
+    console.log('🎯 Using', usePopup ? 'popup' : 'redirect', 'method');
+    
     let result;
     let userId: string;
     
@@ -74,23 +199,57 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       // Try to link anonymous account with Google
       console.log('🔗 Attempting to link anonymous account with Google...');
       try {
-        result = await linkWithPopup(currentUser, provider);
-        userId = result.user.uid;
-        console.log('✅ Accounts linked successfully');
-      } catch (linkError: any) {
+        if (usePopup) {
+          result = await linkWithPopup(currentUser, provider);
+          userId = result.user.uid;
+          console.log('✅ Accounts linked successfully via popup');
+        } else {
+          // Use redirect - this will redirect the page
+          console.log('🔄 Redirecting to Google sign-in...');
+          sessionStorage.setItem('pendingRedirect', 'link');
+          await linkWithRedirect(currentUser, provider);
+          // This line won't be reached - page will redirect
+          throw new Error('REDIRECT_IN_PROGRESS');
+        }
+      } catch (linkError) {
+        const firebaseError = linkError as { code?: string; message?: string };
+        console.log('⚠️ Link error:', firebaseError);
+        
         // If account already exists, sign in with Google instead
-        if (linkError.code === 'auth/credential-already-in-use') {
+        if (firebaseError.code === 'auth/credential-already-in-use') {
           console.log('ℹ️ Google account already exists, signing in instead...');
-          try {
-            result = await signInWithPopup(auth, provider);
-            userId = result.user.uid;
-            console.log('✅ Signed in with existing Google account');
-          } catch (popupError: any) {
-            throw popupError;
+          if (usePopup) {
+            try {
+              result = await signInWithPopup(auth, provider);
+              userId = result.user.uid;
+              console.log('✅ Signed in with existing Google account via popup');
+            } catch (popupError) {
+              const popupFirebaseError = popupError as { code?: string; message?: string };
+              console.log('⚠️ Popup error:', popupFirebaseError);
+              // Handle popup blocked or COOP errors
+              if (popupFirebaseError.code === 'auth/popup-blocked' || 
+                  popupFirebaseError.code === 'auth/cancelled-popup-request' ||
+                  (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+                console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
+                await signInWithRedirect(auth, provider);
+                throw new Error('REDIRECT_IN_PROGRESS');
+              }
+              throw popupError;
+            }
+          } else {
+            console.log('🔄 Redirecting to Google sign-in...');
+            sessionStorage.setItem('pendingRedirect', 'signin');
+            await signInWithRedirect(auth, provider);
+            throw new Error('REDIRECT_IN_PROGRESS');
           }
-        } else if (linkError.code === 'auth/popup-blocked' || linkError.code === 'auth/cancelled-popup-request') {
-          console.log('⚠️ Popup blocked while linking accounts');
-          throw linkError;
+        } else if (firebaseError.code === 'auth/popup-blocked' || 
+                   firebaseError.code === 'auth/cancelled-popup-request' ||
+                   firebaseError.code === 'auth/popup-closed-by-user' ||
+                   (firebaseError.message && firebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+          console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
+          sessionStorage.setItem('pendingRedirect', 'link-fallback');
+          await linkWithRedirect(currentUser, provider);
+          throw new Error('REDIRECT_IN_PROGRESS');
         } else {
           throw linkError;
         }
@@ -98,11 +257,31 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
     } else {
       // Regular Google sign-in
       console.log('📱 Regular Google sign-in...');
-      try {
-        result = await signInWithPopup(auth, provider);
-        userId = result.user.uid;
-      } catch (popupError: any) {
-        throw popupError;
+      if (usePopup) {
+        try {
+          result = await signInWithPopup(auth, provider);
+          userId = result.user.uid;
+          console.log('✅ Signed in via popup');
+        } catch (popupError) {
+          const popupFirebaseError = popupError as { code?: string; message?: string };
+          console.log('⚠️ Popup error:', popupFirebaseError);
+          // Handle popup blocked, cancelled, or COOP errors
+          if (popupFirebaseError.code === 'auth/popup-blocked' ||
+              popupFirebaseError.code === 'auth/cancelled-popup-request' ||
+              popupFirebaseError.code === 'auth/popup-closed-by-user' ||
+              (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+            console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
+            sessionStorage.setItem('pendingRedirect', 'signin-fallback');
+            await signInWithRedirect(auth, provider);
+            throw new Error('REDIRECT_IN_PROGRESS');
+          }
+          throw popupError;
+        }
+      } else {
+        console.log('🔄 Redirecting to Google sign-in...');
+        sessionStorage.setItem('pendingRedirect', 'signin');
+        await signInWithRedirect(auth, provider);
+        throw new Error('REDIRECT_IN_PROGRESS');
       }
     }
     
@@ -161,18 +340,25 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
     }
     
     return { userId, isNewUser };
-  } catch (error: any) {
+  } catch (error) {
+    const firebaseError = error as { code?: string; message?: string };
+    // Handle redirect in progress (not an error)
+    if (firebaseError.message === 'REDIRECT_IN_PROGRESS') {
+      console.log('🔄 Redirect initiated, page will reload...');
+      throw error; // Pass it up so UI can handle
+    }
+    
     // Handle popup cancellation silently (user just closed it or opened multiple)
-    if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+    if (firebaseError.code === 'auth/popup-closed-by-user' || firebaseError.code === 'auth/cancelled-popup-request') {
       console.log('ℹ️ User cancelled the sign-in popup');
       throw new Error('POPUP_CANCELLED'); // Special error code to handle silently
     }
     
     console.error('❌ Error signing in with Google:', error);
     
-    // Handle other errors
-    if (error.code === 'auth/popup-blocked') {
-      throw new Error('Прозорецът за вход беше блокиран от браузъра. Моля, разрешете изскачащи прозорци за този сайт и опитайте отново.');
+    // Popup blocked errors should have already been handled by switching to redirect
+    if (firebaseError.code === 'auth/popup-blocked') {
+      throw new Error('Прозорецът за вход беше блокиран. Моля, презаредете страницата и опитайте отново.');
     }
     
     throw error;
@@ -248,6 +434,38 @@ export const addCustomizationsToUser = async (userId: string, amount: number): P
   await updateDoc(userDoc, {
     customizationsAllowed: increment(amount),
   });
+};
+
+// Award referral bonus to the referrer
+export const awardReferralBonus = async (referrerId: string, referredUserId: string): Promise<void> => {
+  const referrerDoc = doc(db, 'users', referrerId);
+  const referredDoc = doc(db, 'users', referredUserId);
+  
+  // Check if referrer exists
+  const referrerSnap = await getDoc(referrerDoc);
+  if (!referrerSnap.exists()) {
+    console.warn('Referrer user not found:', referrerId);
+    return;
+  }
+  
+  // Check if referred user already used a referral code
+  const referredSnap = await getDoc(referredDoc);
+  if (referredSnap.exists() && referredSnap.data().referredBy) {
+    console.log('User already used a referral code');
+    return;
+  }
+  
+  // Award 5 customizations to referrer
+  await updateDoc(referrerDoc, {
+    customizationsAllowed: increment(5),
+  });
+  
+  // Mark referred user to prevent duplicate referrals
+  await updateDoc(referredDoc, {
+    referredBy: referrerId,
+  });
+  
+  console.log(`✅ Awarded 5 customizations to referrer ${referrerId}`);
 };
 
 export { app, db, storage, analytics, auth };
