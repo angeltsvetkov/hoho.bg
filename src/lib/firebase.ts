@@ -59,27 +59,11 @@ const canUsePopup = (): boolean => {
     // Check if we're in a browser environment
     if (typeof window === 'undefined') return false;
 
-    // Check for localhost - use popup for better dev experience
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      console.log('🌐 Localhost detected, using popup method');
-      return true;
-    }
-
-    // Try to detect Arc browser and other strict browsers
-    const userAgent = navigator.userAgent.toLowerCase();
-    // Arc browser is based on Chromium but doesn't identify itself clearly
-    // Better to use redirect by default for compatibility
-    const isArc = userAgent.includes('arc');
-
-    // Arc and similar browsers block popups by default, use redirect
-    if (isArc) {
-      console.log('🌐 Arc browser detected, using redirect method');
-      return false;
-    }
-
-    // Default to redirect for better compatibility
-    // Popup method has issues with COOP headers in development
-    return false;
+    // Use popup method for all environments
+    // Popup is more reliable and doesn't require Firebase Hosting configuration
+    // Modern browsers allow popups when triggered by user action
+    console.log('🌐 Using popup authentication method');
+    return true;
   } catch {
     return false;
   }
