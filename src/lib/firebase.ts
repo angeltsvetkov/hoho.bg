@@ -714,9 +714,9 @@ export const incrementCustomizationCount = async (userId: string): Promise<void>
 // Mark user as having listened to default message
 export const markDefaultMessageListened = async (userId: string): Promise<void> => {
   const userDoc = doc(db, 'users', userId);
-  await updateDoc(userDoc, {
+  await setDoc(userDoc, {
     hasListenedToDefault: true,
-  });
+  }, { merge: true });
 };
 
 // Add customizations to user's allowed count
