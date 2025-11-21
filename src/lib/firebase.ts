@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithRedirect, linkWithRedirect, getRedirectResult, getAuth, browserLocalPersistence, setPersistence, signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithRedirect, linkWithRedirect, getRedirectResult, getAuth, browserLocalPersistence, setPersistence, onAuthStateChanged, User, UserCredential, Auth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -45,58 +45,38 @@ if (typeof window !== 'undefined') {
 const ensurePersistence = async () => {
   if (typeof window === 'undefined') return;
   if (persistenceSet) return;
-  
+
   // Wait for persistence to be set
   await setPersistence(auth, browserLocalPersistence);
   persistenceSet = true;
 };
 
-// Helper function to ensure user is authenticated anonymously
-export const ensureAnonymousAuth = async (): Promise<string> => {
-  await ensurePersistence();
-  
-  if (auth.currentUser) {
-    return auth.currentUser.uid;
-  }
-  
-  try {
-    const userCredential = await signInAnonymously(auth);
-    return userCredential.user.uid;
-  } catch (error) {
-    console.error('Error signing in anonymously:', error);
-    throw error;
-  }
-};
 
-// Helper function to check if user is anonymous
-export const isAnonymousUser = (): boolean => {
-  return auth.currentUser?.isAnonymous ?? true;
-};
 
 // Helper to detect if popups are supported/allowed
 const canUsePopup = (): boolean => {
   try {
     // Check if we're in a browser environment
     if (typeof window === 'undefined') return false;
-    
-    // Check for localhost - always use redirect on localhost to avoid COOP issues
+
+    // Check for localhost - use popup for better dev experience
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      console.log('🌐 Localhost detected, using redirect method to avoid COOP issues');
-      return false;
+      console.log('🌐 Localhost detected, using popup method');
+      return true;
     }
-    
+
     // Try to detect Arc browser and other strict browsers
     const userAgent = navigator.userAgent.toLowerCase();
     // Arc browser is based on Chromium but doesn't identify itself clearly
     // Better to use redirect by default for compatibility
     const isArc = userAgent.includes('arc');
-    
+
     // Arc and similar browsers block popups by default, use redirect
     if (isArc) {
       console.log('🌐 Arc browser detected, using redirect method');
       return false;
     }
-    
+
     // Default to redirect for better compatibility
     // Popup method has issues with COOP headers in development
     return false;
@@ -105,43 +85,56 @@ const canUsePopup = (): boolean => {
   }
 };
 
+// Shared promise to prevent double-invocation in Strict Mode
+let redirectResultPromise: Promise<UserCredential | null> | null = null;
+
+const getSharedRedirectResult = (authInstance: Auth): Promise<UserCredential | null> => {
+  if (!redirectResultPromise) {
+    console.log('🔄 Initializing shared redirect result promise...');
+    redirectResultPromise = getRedirectResult(authInstance);
+  } else {
+    console.log('♻️ Reusing existing redirect result promise');
+  }
+  return redirectResultPromise;
+};
+
 // Helper function to check and handle redirect result
 export const handleRedirectResult = async (): Promise<{ userId: string; isNewUser: boolean } | null> => {
   try {
     await ensurePersistence();
     console.log('🔍 Checking for redirect result...');
-    
+
     // Check if we just came back from a redirect
     // The URL will have been cleaned by Firebase, but we can check sessionStorage
     const pendingRedirect = sessionStorage.getItem('pendingRedirect');
     if (pendingRedirect) {
       console.log('📍 Pending redirect detected in session storage');
       sessionStorage.removeItem('pendingRedirect'); // Remove it now to prevent loops
-      
+
       // First, try getRedirectResult to trigger Firebase to process the auth code
       console.log('⏳ Calling getRedirectResult to trigger Firebase processing...');
-      let redirectResult = await getRedirectResult(auth);
-      
+      let redirectResult = await getSharedRedirectResult(auth);
+
       console.log('🔍 Redirect result:', redirectResult ? 'FOUND' : 'NULL');
       console.log('🔍 Current user after getRedirectResult:', {
         uid: auth.currentUser?.uid,
         isAnonymous: auth.currentUser?.isAnonymous,
         provider: auth.currentUser?.providerData?.[0]?.providerId
       });
-      
+
       // Check if user is already signed in (Firebase processed it before we checked)
       if (!redirectResult && auth.currentUser && !auth.currentUser.isAnonymous) {
         console.log('✅ Firebase already processed redirect - user is signed in!');
         redirectResult = { user: auth.currentUser } as any;
       }
-      
+
       // If still no result, wait for auth state to change (Firebase processes async)
       if (!redirectResult) {
         console.log('⏳ No immediate result, waiting for Firebase to process redirect...');
         const googleUser = await new Promise<User | null>((resolve) => {
           let timeoutId: NodeJS.Timeout;
           let checkCount = 0;
-          
+
           const unsubscribe = onAuthStateChanged(auth, (user) => {
             checkCount++;
             console.log(`🔄 Auth state check #${checkCount}:`, {
@@ -149,7 +142,7 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
               isAnonymous: user?.isAnonymous,
               provider: user?.providerData?.[0]?.providerId
             });
-            
+
             // If we get a Google user, resolve immediately
             if (user && !user.isAnonymous) {
               clearTimeout(timeoutId);
@@ -158,7 +151,7 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
               resolve(user);
             }
           });
-          
+
           // Timeout after 10 seconds (increased from 3)
           timeoutId = setTimeout(() => {
             unsubscribe();
@@ -172,31 +165,31 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
             }
           }, 10000);
         });
-        
+
         if (googleUser) {
           redirectResult = { user: googleUser } as any;
         }
       } else {
         console.log('✅ Got redirect result immediately!');
       }
-      
+
       const googleUser = redirectResult?.user;
       // If we got a Google user, process migration
       const anonymousDataStr = sessionStorage.getItem('anonymousData');
       if (googleUser && anonymousDataStr) {
         console.log('✅ User signed in with Google after redirect, processing migration');
         const userId = googleUser.uid;
-        
+
         sessionStorage.removeItem('anonymousData');
         sessionStorage.removeItem('anonymousUid');
-        
+
         const oldData = JSON.parse(anonymousDataStr);
         console.log('📦 Saved anonymous data:', oldData);
-        
+
         // Check if we need to award customizations
         const userDoc = doc(db, 'users', userId);
         const userSnap = await getDoc(userDoc);
-        
+
         if (!userSnap.exists()) {
           console.log('🆕 New user - creating with migrated data + 3 customizations');
           await setDoc(userDoc, {
@@ -222,17 +215,17 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
           return { userId, isNewUser: false };
         }
       }
-      
+
       // Check if user is signed in (might have been processed already)
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
         console.log('✅ User is already signed in with Google (redirect was already processed)');
         const userId = auth.currentUser.uid;
-        
+
         // Check if we need to award customizations
         const userDoc = doc(db, 'users', userId);
         const userSnap = await getDoc(userDoc);
         let isNewUser = false;
-        
+
         if (!userSnap.exists()) {
           console.log('🆕 New user - creating with 3 customizations');
           isNewUser = true;
@@ -258,29 +251,29 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
       }
       return null;
     } // Close the if (pendingRedirect) block
-    
+
     // No pending redirect - try normal getRedirectResult
-    const result = await getRedirectResult(auth);
+    const result = await getSharedRedirectResult(auth);
     if (result) {
       console.log('✅ Redirect sign-in successful via getRedirectResult');
       const userId = result.user.uid;
-    
+
       // Check if we need to migrate data from anonymous user
       const anonymousDataStr = sessionStorage.getItem('anonymousData');
       const oldAnonymousUid = sessionStorage.getItem('anonymousUid');
-      
+
       if (anonymousDataStr) {
         console.log('🔄 Migrating data from saved anonymous session');
         sessionStorage.removeItem('anonymousData');
         sessionStorage.removeItem('anonymousUid');
-        
+
         const oldData = JSON.parse(anonymousDataStr);
         console.log('📦 Old anonymous user data:', oldData);
-        
+
         // Merge with new Google user
         const userDoc = doc(db, 'users', userId);
         const userSnap = await getDoc(userDoc);
-        
+
         if (!userSnap.exists()) {
           // New Google user - create with old data + bonus
           await setDoc(userDoc, {
@@ -310,19 +303,19 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
         // Fallback: try to get data from Firestore
         console.log('🔄 Migrating data from anonymous user:', oldAnonymousUid);
         sessionStorage.removeItem('anonymousUid');
-        
+
         // Get old anonymous user data
         const oldUserDoc = doc(db, 'users', oldAnonymousUid);
         const oldUserSnap = await getDoc(oldUserDoc);
-        
+
         if (oldUserSnap.exists()) {
           const oldData = oldUserSnap.data();
           console.log('📦 Old anonymous user data:', oldData);
-          
+
           // Merge with new Google user
           const userDoc = doc(db, 'users', userId);
           const userSnap = await getDoc(userDoc);
-          
+
           if (!userSnap.exists()) {
             // New Google user - create with old data + bonus
             await setDoc(userDoc, {
@@ -344,12 +337,12 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
           }
         }
       }
-      
+
       // Award customizations (same logic as popup)
       const userDoc = doc(db, 'users', userId);
       const userSnap = await getDoc(userDoc);
       let isNewUser = false;
-      
+
       if (!userSnap.exists()) {
         console.log('🆕 New user - creating with 3 customizations');
         isNewUser = true;
@@ -372,10 +365,10 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
           console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
         }
       }
-      
+
       return { userId, isNewUser };
     }
-    
+
     // No result
     return null;
   } catch (error) {
@@ -389,26 +382,26 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
   try {
     await ensurePersistence();
     console.log('🔐 Starting Google sign-in...');
-    
+
     // Check if user is already signed in with Google
     const currentUser = auth.currentUser;
     if (currentUser && !currentUser.isAnonymous) {
       console.log('✅ User already signed in with Google');
       return { userId: currentUser.uid, isNewUser: false };
     }
-    
+
     const provider = new GoogleAuthProvider();
     provider.addScope('profile');
     provider.addScope('email');
     const wasAnonymous = currentUser?.isAnonymous ?? false;
     console.log('👤 Current user anonymous:', wasAnonymous);
-    
+
     const usePopup = canUsePopup();
     console.log('🎯 Using', usePopup ? 'popup' : 'redirect', 'method');
-    
+
     let result;
     let userId: string;
-    
+
     if (wasAnonymous && currentUser) {
       // Save anonymous user data before signing out
       if (!usePopup) {
@@ -425,12 +418,12 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
         }
         sessionStorage.setItem('anonymousUid', currentUser.uid);
         console.log('💾 Stored anonymous UID for data migration:', currentUser.uid);
-        
+
         // Sign out anonymous user before redirect
         await auth.signOut();
         console.log('🚪 Signed out anonymous user before redirect');
       }
-      
+
       // Try to link anonymous account with Google (popup only)
       console.log('🔗 Attempting to link anonymous account with Google...');
       try {
@@ -442,37 +435,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
           // Use regular sign-in redirect after signing out
           console.log('🔄 Redirecting to Google sign-in...');
           sessionStorage.setItem('pendingRedirect', 'signin');
-          
-          // Force auth domain to current origin if on localhost to ensure correct redirect
-          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            // Use http protocol for localhost to avoid SSL errors
-            const host = window.location.host;
-            auth.config.authDomain = host; // e.g. localhost:3000
-            
-            // Monkey patch the _getAppAuthDomain function if it exists (internal Firebase method)
-            // This is a hack but necessary because Firebase SDK forces https for auth domains
-            // @ts-ignore
-            if (auth._getAppAuthDomain) {
-              // @ts-ignore
-              auth._getAppAuthDomain = () => 'http://' + host;
-            }
-            
-            // Also try to patch the underlying _protocol if accessible
-            // @ts-ignore
-            if (auth._protocol) auth._protocol = 'http';
-            
-            // And patch the config object itself if it has a protocol property
-            // @ts-ignore
-            if (auth.config.protocol) auth.config.protocol = 'http';
-          } else {
-            // Reset to default behavior for production
-             // @ts-ignore
-             if (auth._getAppAuthDomain) {
-               // @ts-ignore
-               delete auth._getAppAuthDomain;
-             }
-          }
-          
+
           await signInWithRedirect(auth, provider);
           // This line won't be reached - page will redirect
           throw new Error('REDIRECT_IN_PROGRESS');
@@ -480,7 +443,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       } catch (linkError) {
         const firebaseError = linkError as { code?: string; message?: string };
         console.log('⚠️ Link error:', firebaseError);
-        
+
         // If account already exists, sign in with Google instead
         if (firebaseError.code === 'auth/credential-already-in-use') {
           console.log('ℹ️ Google account already exists, signing in instead...');
@@ -493,9 +456,9 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
               const popupFirebaseError = popupError as { code?: string; message?: string };
               console.log('⚠️ Popup error:', popupFirebaseError);
               // Handle popup blocked or COOP errors
-              if (popupFirebaseError.code === 'auth/popup-blocked' || 
-                  popupFirebaseError.code === 'auth/cancelled-popup-request' ||
-                  (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+              if (popupFirebaseError.code === 'auth/popup-blocked' ||
+                popupFirebaseError.code === 'auth/cancelled-popup-request' ||
+                (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
                 console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
                 await signInWithRedirect(auth, provider);
                 throw new Error('REDIRECT_IN_PROGRESS');
@@ -508,10 +471,10 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
             await signInWithRedirect(auth, provider);
             throw new Error('REDIRECT_IN_PROGRESS');
           }
-        } else if (firebaseError.code === 'auth/popup-blocked' || 
-                   firebaseError.code === 'auth/cancelled-popup-request' ||
-                   firebaseError.code === 'auth/popup-closed-by-user' ||
-                   (firebaseError.message && firebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+        } else if (firebaseError.code === 'auth/popup-blocked' ||
+          firebaseError.code === 'auth/cancelled-popup-request' ||
+          firebaseError.code === 'auth/popup-closed-by-user' ||
+          (firebaseError.message && firebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
           console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
           sessionStorage.setItem('anonymousUid', currentUser.uid);
           sessionStorage.setItem('pendingRedirect', 'signin-fallback');
@@ -534,9 +497,9 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
           console.log('⚠️ Popup error:', popupFirebaseError);
           // Handle popup blocked, cancelled, or COOP errors
           if (popupFirebaseError.code === 'auth/popup-blocked' ||
-              popupFirebaseError.code === 'auth/cancelled-popup-request' ||
-              popupFirebaseError.code === 'auth/popup-closed-by-user' ||
-              (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
+            popupFirebaseError.code === 'auth/cancelled-popup-request' ||
+            popupFirebaseError.code === 'auth/popup-closed-by-user' ||
+            (popupFirebaseError.message && popupFirebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
             console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
             sessionStorage.setItem('pendingRedirect', 'signin-fallback');
             await signInWithRedirect(auth, provider);
@@ -547,42 +510,19 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       } else {
         console.log('🔄 Redirecting to Google sign-in...');
         sessionStorage.setItem('pendingRedirect', 'signin');
-        
-        // Force auth domain to current origin if on localhost to ensure correct redirect
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          // Use http protocol for localhost to avoid SSL errors
-          const host = window.location.host;
-          auth.config.authDomain = host;
-          
-          // @ts-ignore
-          if (auth._getAppAuthDomain) {
-            // @ts-ignore
-            auth._getAppAuthDomain = () => 'http://' + host;
-          }
-          
-          // Also try to patch the underlying _protocol if accessible
-          // @ts-ignore
-          if (auth._protocol) auth._protocol = 'http';
-        } else {
-           // @ts-ignore
-           if (auth._getAppAuthDomain) {
-             // @ts-ignore
-             delete auth._getAppAuthDomain;
-           }
-        }
-        
+
         await signInWithRedirect(auth, provider);
         throw new Error('REDIRECT_IN_PROGRESS');
       }
     }
-    
+
     console.log('👤 User ID:', userId);
-    
+
     // Award 3 free customizations for new Google users
     const userDoc = doc(db, 'users', userId);
     const userSnap = await getDoc(userDoc);
     let isNewUser = false;
-    
+
     if (!userSnap.exists()) {
       console.log('🆕 New user - creating with 3 customizations');
       isNewUser = true;
@@ -595,7 +535,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       };
       await setDoc(userDoc, newUserData);
       console.log('✅ User document created successfully');
-      
+
       // Verify the write
       const verifySnap = await getDoc(userDoc);
       if (verifySnap.exists()) {
@@ -607,7 +547,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       const currentData = userSnap.data();
       const currentAllowed = currentData.customizationsAllowed || 0;
       console.log('👥 Existing user - current customizations:', currentAllowed);
-      
+
       // Check if user already has the Google login bonus
       if (currentData.isGoogleUser) {
         console.log('ℹ️ User already received Google login bonus');
@@ -621,7 +561,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
           isGoogleUser: true,
         });
         console.log(`✅ Customizations increased from ${currentAllowed} to ${newAllowed}`);
-        
+
         // Verify the update
         const verifySnap = await getDoc(userDoc);
         if (verifySnap.exists()) {
@@ -629,7 +569,7 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
         }
       }
     }
-    
+
     return { userId, isNewUser };
   } catch (error) {
     const firebaseError = error as { code?: string; message?: string };
@@ -638,20 +578,20 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       console.log('🔄 Redirect initiated, page will reload...');
       throw error; // Pass it up so UI can handle
     }
-    
+
     // Handle popup cancellation silently (user just closed it or opened multiple)
     if (firebaseError.code === 'auth/popup-closed-by-user' || firebaseError.code === 'auth/cancelled-popup-request') {
       console.log('ℹ️ User cancelled the sign-in popup');
       throw new Error('POPUP_CANCELLED'); // Special error code to handle silently
     }
-    
+
     console.error('❌ Error signing in with Google:', error);
-    
+
     // Popup blocked errors should have already been handled by switching to redirect
     if (firebaseError.code === 'auth/popup-blocked') {
       throw new Error('Прозорецът за вход беше блокиран. Моля, презаредете страницата и опитайте отново.');
     }
-    
+
     throw error;
   }
 };
@@ -668,13 +608,21 @@ interface UserData {
 export const getUserData = async (userId: string, createIfMissing: boolean = true): Promise<UserData> => {
   const userDoc = doc(db, 'users', userId);
   const userSnap = await getDoc(userDoc);
-  
+
   if (userSnap.exists()) {
-    const data = userSnap.data() as UserData;
+    const data = userSnap.data();
     console.log('📖 Retrieved user data:', { userId, customizationsAllowed: data.customizationsAllowed, customizationsUsed: data.customizationsUsed });
-    return data;
+
+    // Ensure we return valid numbers even if fields are missing
+    return {
+      customizationsUsed: typeof data.customizationsUsed === 'number' ? data.customizationsUsed : 0,
+      customizationsAllowed: typeof data.customizationsAllowed === 'number' ? data.customizationsAllowed : 0,
+      createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+      lastCustomizationAt: data.lastCustomizationAt ? data.lastCustomizationAt.toDate() : undefined,
+      hasListenedToDefault: data.hasListenedToDefault || false,
+    };
   }
-  
+
   if (!createIfMissing) {
     console.log('⚠️ User document not found and createIfMissing is false');
     return {
@@ -683,7 +631,7 @@ export const getUserData = async (userId: string, createIfMissing: boolean = tru
       createdAt: new Date(),
     };
   }
-  
+
   // Create new user with default allowance
   console.log('🆕 Creating new user document with 0 customizations');
   const newUserData: UserData = {
@@ -691,7 +639,7 @@ export const getUserData = async (userId: string, createIfMissing: boolean = tru
     customizationsAllowed: 0, // Default: 0 customizations per user
     createdAt: new Date(),
   };
-  
+
   await setDoc(userDoc, newUserData);
   return newUserData;
 };
@@ -731,31 +679,31 @@ export const addCustomizationsToUser = async (userId: string, amount: number): P
 export const awardReferralBonus = async (referrerId: string, referredUserId: string): Promise<void> => {
   const referrerDoc = doc(db, 'users', referrerId);
   const referredDoc = doc(db, 'users', referredUserId);
-  
+
   // Check if referrer exists
   const referrerSnap = await getDoc(referrerDoc);
   if (!referrerSnap.exists()) {
     console.warn('Referrer user not found:', referrerId);
     return;
   }
-  
+
   // Check if referred user already used a referral code
   const referredSnap = await getDoc(referredDoc);
   if (referredSnap.exists() && referredSnap.data().referredBy) {
     console.log('User already used a referral code');
     return;
   }
-  
+
   // Award 5 customizations to referrer
   await updateDoc(referrerDoc, {
     customizationsAllowed: increment(5),
   });
-  
+
   // Mark referred user to prevent duplicate referrals
   await updateDoc(referredDoc, {
     referredBy: referrerId,
   });
-  
+
   console.log(`✅ Awarded 5 customizations to referrer ${referrerId}`);
 };
 
