@@ -235,14 +235,37 @@ export default function Home() {
     const initAuth = async () => {
       try {
         console.log('🚀 Starting auth initialization...');
-
-        // First, check for redirect result from Google sign-in
-        const redirectResult = await handleRedirectResult();
-        if (redirectResult) {
-          console.log('✅ Redirect sign-in complete:', redirectResult);
-          // Show success message
-          if (redirectResult.isNewUser) {
-            alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
+        
+        // Check if we're coming back from a redirect BEFORE checking auth state
+        const pendingRedirect = sessionStorage.getItem('pendingRedirect');
+        if (pendingRedirect) {
+          console.log('🚫 Redirect pending - processing immediately...');
+          
+          // Handle redirect FIRST, before waiting for auth state
+          const redirectResult = await handleRedirectResult();
+          if (redirectResult) {
+            console.log('✅ Redirect sign-in complete:', redirectResult);
+            // Update UI state
+            setCurrentUserId(redirectResult.userId);
+            setIsAnonymous(false);
+            
+            const user = auth.currentUser;
+            if (user) {
+              setUserProfile({
+                photoURL: user.photoURL,
+                displayName: user.displayName,
+              });
+            }
+            
+            const userData = await getUserData(redirectResult.userId, false);
+            setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
+            
+            // Show success message
+            if (redirectResult.isNewUser) {
+              alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
+            }
+            
+            return; // Skip the rest since we handled the Google user
           }
         }
 
@@ -261,11 +284,40 @@ export default function Home() {
             resolve(user);
           });
         });
+        
+        // If no pending redirect, check for redirect result after auth state settles
+        if (!pendingRedirect) {
+          const redirectResult = await handleRedirectResult();
+          if (redirectResult) {
+            console.log('✅ Redirect sign-in complete:', redirectResult);
+            // Update UI state
+            setCurrentUserId(redirectResult.userId);
+            setIsAnonymous(false);
+            
+            const user = auth.currentUser;
+            if (user) {
+              setUserProfile({
+                photoURL: user.photoURL,
+                displayName: user.displayName,
+              });
+            }
+            
+            const userData = await getUserData(redirectResult.userId, false);
+            setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
+            
+            // Show success message
+            if (redirectResult.isNewUser) {
+              alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
+            }
+            
+            return; // Skip the rest since we handled the Google user
+          }
+        }
 
         console.log('🔐 Auth state restored:', {
           uid: authUser?.uid,
           isAnonymous: authUser?.isAnonymous,
-          displayName: authUser?.displayName,
+          displayName: authUser?.photoURL,
           photoURL: authUser?.photoURL,
         });
 
@@ -290,7 +342,13 @@ export default function Home() {
           await processReferralBonus(authUser.uid);
 
         } else {
-          // Anonymous user
+          // Anonymous user - but check if redirect is still pending
+          const stillPending = sessionStorage.getItem('pendingRedirect');
+          if (stillPending) {
+            console.log('🚫 Skipping anonymous initialization - redirect still pending');
+            return; // Don't create anonymous user while redirect is processing
+          }
+          
           setIsAnonymous(true);
           const userId = await ensureAnonymousAuth();
           console.log('🔑 Auth initialized with user ID:', userId);
@@ -1194,7 +1252,7 @@ export default function Home() {
           </div>
           <div className="h-px w-32 bg-linear-to-r from-transparent via-[#ffd7ec] to-transparent"></div>
           <p className="text-xs font-bold text-[#d91f63]/60">
-            © 2025 BrainEXT. Всички права запазени.
+            © 2025 Viply. Всички права запазени.
           </p>
           {currentUserId && (
             <p className="text-[10px] font-mono text-[#d91f63]/20 select-all">

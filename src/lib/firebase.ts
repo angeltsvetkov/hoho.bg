@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getAnalytics } from 'firebase/analytics';
-import { getAuth, signInAnonymously, GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithRedirect, linkWithRedirect, getRedirectResult } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, linkWithPopup, signInWithRedirect, linkWithRedirect, getRedirectResult, getAuth, browserLocalPersistence, setPersistence, signInAnonymously, onAuthStateChanged, User } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -28,8 +28,33 @@ if (typeof window !== 'undefined') {
   analytics = getAnalytics(app);
 }
 
+// Set persistence synchronously on module load
+let persistenceSet = false;
+if (typeof window !== 'undefined') {
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => {
+      persistenceSet = true;
+      console.log('✅ Auth persistence set to browserLocalPersistence');
+    })
+    .catch((error) => {
+      console.error('❌ Error setting persistence:', error);
+    });
+}
+
+// Helper to ensure persistence is set before operations
+const ensurePersistence = async () => {
+  if (typeof window === 'undefined') return;
+  if (persistenceSet) return;
+  
+  // Wait for persistence to be set
+  await setPersistence(auth, browserLocalPersistence);
+  persistenceSet = true;
+};
+
 // Helper function to ensure user is authenticated anonymously
 export const ensureAnonymousAuth = async (): Promise<string> => {
+  await ensurePersistence();
+  
   if (auth.currentUser) {
     return auth.currentUser.uid;
   }
@@ -83,6 +108,7 @@ const canUsePopup = (): boolean => {
 // Helper function to check and handle redirect result
 export const handleRedirectResult = async (): Promise<{ userId: string; isNewUser: boolean } | null> => {
   try {
+    await ensurePersistence();
     console.log('🔍 Checking for redirect result...');
     
     // Check if we just came back from a redirect
@@ -90,13 +116,113 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
     const pendingRedirect = sessionStorage.getItem('pendingRedirect');
     if (pendingRedirect) {
       console.log('📍 Pending redirect detected in session storage');
-      sessionStorage.removeItem('pendingRedirect');
-    }
-    
-    const result = await getRedirectResult(auth);
-    
-    if (!result) {
-      console.log('ℹ️ No redirect result found');
+      sessionStorage.removeItem('pendingRedirect'); // Remove it now to prevent loops
+      
+      // First, try getRedirectResult to trigger Firebase to process the auth code
+      console.log('⏳ Calling getRedirectResult to trigger Firebase processing...');
+      let redirectResult = await getRedirectResult(auth);
+      
+      console.log('🔍 Redirect result:', redirectResult ? 'FOUND' : 'NULL');
+      console.log('🔍 Current user after getRedirectResult:', {
+        uid: auth.currentUser?.uid,
+        isAnonymous: auth.currentUser?.isAnonymous,
+        provider: auth.currentUser?.providerData?.[0]?.providerId
+      });
+      
+      // Check if user is already signed in (Firebase processed it before we checked)
+      if (!redirectResult && auth.currentUser && !auth.currentUser.isAnonymous) {
+        console.log('✅ Firebase already processed redirect - user is signed in!');
+        redirectResult = { user: auth.currentUser } as any;
+      }
+      
+      // If still no result, wait for auth state to change (Firebase processes async)
+      if (!redirectResult) {
+        console.log('⏳ No immediate result, waiting for Firebase to process redirect...');
+        const googleUser = await new Promise<User | null>((resolve) => {
+          let timeoutId: NodeJS.Timeout;
+          let checkCount = 0;
+          
+          const unsubscribe = onAuthStateChanged(auth, (user) => {
+            checkCount++;
+            console.log(`🔄 Auth state check #${checkCount}:`, {
+              uid: user?.uid,
+              isAnonymous: user?.isAnonymous,
+              provider: user?.providerData?.[0]?.providerId
+            });
+            
+            // If we get a Google user, resolve immediately
+            if (user && !user.isAnonymous) {
+              clearTimeout(timeoutId);
+              unsubscribe();
+              console.log('✅ Google user detected after redirect!');
+              resolve(user);
+            }
+          });
+          
+          // Timeout after 10 seconds (increased from 3)
+          timeoutId = setTimeout(() => {
+            unsubscribe();
+            console.log('⏱️ Timeout waiting for Google user after 10 seconds');
+            // Last chance: check auth.currentUser one more time
+            if (auth.currentUser && !auth.currentUser.isAnonymous) {
+              console.log('✅ Found Google user in final check!');
+              resolve(auth.currentUser);
+            } else {
+              resolve(null);
+            }
+          }, 10000);
+        });
+        
+        if (googleUser) {
+          redirectResult = { user: googleUser } as any;
+        }
+      } else {
+        console.log('✅ Got redirect result immediately!');
+      }
+      
+      const googleUser = redirectResult?.user;
+      // If we got a Google user, process migration
+      const anonymousDataStr = sessionStorage.getItem('anonymousData');
+      if (googleUser && anonymousDataStr) {
+        console.log('✅ User signed in with Google after redirect, processing migration');
+        const userId = googleUser.uid;
+        
+        sessionStorage.removeItem('anonymousData');
+        sessionStorage.removeItem('anonymousUid');
+        
+        const oldData = JSON.parse(anonymousDataStr);
+        console.log('📦 Saved anonymous data:', oldData);
+        
+        // Check if we need to award customizations
+        const userDoc = doc(db, 'users', userId);
+        const userSnap = await getDoc(userDoc);
+        
+        if (!userSnap.exists()) {
+          console.log('🆕 New user - creating with migrated data + 3 customizations');
+          await setDoc(userDoc, {
+            customizationsUsed: oldData.customizationsUsed || 0,
+            customizationsAllowed: (oldData.customizationsAllowed || 0) + 3,
+            createdAt: new Date(),
+            isGoogleUser: true,
+            hasListenedToDefault: oldData.hasListenedToDefault || false,
+          });
+          console.log('✅ User document created successfully with migration');
+          return { userId, isNewUser: true };
+        } else if (!userSnap.data().isGoogleUser) {
+          console.log('🎁 Existing user, awarding Google login bonus');
+          const currentAllowed = userSnap.data().customizationsAllowed || 0;
+          await updateDoc(userDoc, {
+            customizationsAllowed: currentAllowed + 3,
+            isGoogleUser: true,
+          });
+          console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
+          return { userId, isNewUser: true };
+        } else {
+          console.log('ℹ️ User already has Google login bonus');
+          return { userId, isNewUser: false };
+        }
+      }
+      
       // Check if user is signed in (might have been processed already)
       if (auth.currentUser && !auth.currentUser.isAnonymous) {
         console.log('✅ User is already signed in with Google (redirect was already processed)');
@@ -131,40 +257,127 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
         }
       }
       return null;
-    }
+    } // Close the if (pendingRedirect) block
     
-    console.log('✅ Redirect sign-in successful');
-    const userId = result.user.uid;
+    // No pending redirect - try normal getRedirectResult
+    const result = await getRedirectResult(auth);
+    if (result) {
+      console.log('✅ Redirect sign-in successful via getRedirectResult');
+      const userId = result.user.uid;
     
-    // Award customizations (same logic as popup)
-    const userDoc = doc(db, 'users', userId);
-    const userSnap = await getDoc(userDoc);
-    let isNewUser = false;
-    
-    if (!userSnap.exists()) {
-      console.log('🆕 New user - creating with 3 customizations');
-      isNewUser = true;
-      await setDoc(userDoc, {
-        customizationsUsed: 0,
-        customizationsAllowed: 3,
-        createdAt: new Date(),
-        isGoogleUser: true,
-      });
-      console.log('✅ User document created successfully');
-    } else {
-      const currentData = userSnap.data();
-      if (!currentData.isGoogleUser) {
+      // Check if we need to migrate data from anonymous user
+      const anonymousDataStr = sessionStorage.getItem('anonymousData');
+      const oldAnonymousUid = sessionStorage.getItem('anonymousUid');
+      
+      if (anonymousDataStr) {
+        console.log('🔄 Migrating data from saved anonymous session');
+        sessionStorage.removeItem('anonymousData');
+        sessionStorage.removeItem('anonymousUid');
+        
+        const oldData = JSON.parse(anonymousDataStr);
+        console.log('📦 Old anonymous user data:', oldData);
+        
+        // Merge with new Google user
+        const userDoc = doc(db, 'users', userId);
+        const userSnap = await getDoc(userDoc);
+        
+        if (!userSnap.exists()) {
+          // New Google user - create with old data + bonus
+          await setDoc(userDoc, {
+            customizationsUsed: oldData.customizationsUsed || 0,
+            customizationsAllowed: (oldData.customizationsAllowed || 0) + 3,
+            createdAt: new Date(),
+            isGoogleUser: true,
+            hasListenedToDefault: oldData.hasListenedToDefault || false,
+          });
+          console.log('✅ Created new user with migrated data + 3 bonus customizations');
+          return { userId, isNewUser: true };
+        } else {
+          // Existing Google user - just mark as Google user and add bonus
+          const currentData = userSnap.data();
+          if (!currentData.isGoogleUser) {
+            await updateDoc(userDoc, {
+              customizationsAllowed: (currentData.customizationsAllowed || 0) + 3,
+              isGoogleUser: true,
+            });
+            console.log('✅ Updated existing Google user with bonus');
+            return { userId, isNewUser: true };
+          }
+          console.log('✅ Updated existing Google user');
+          return { userId, isNewUser: false };
+        }
+      } else if (oldAnonymousUid) {
+        // Fallback: try to get data from Firestore
+        console.log('🔄 Migrating data from anonymous user:', oldAnonymousUid);
+        sessionStorage.removeItem('anonymousUid');
+        
+        // Get old anonymous user data
+        const oldUserDoc = doc(db, 'users', oldAnonymousUid);
+        const oldUserSnap = await getDoc(oldUserDoc);
+        
+        if (oldUserSnap.exists()) {
+          const oldData = oldUserSnap.data();
+          console.log('📦 Old anonymous user data:', oldData);
+          
+          // Merge with new Google user
+          const userDoc = doc(db, 'users', userId);
+          const userSnap = await getDoc(userDoc);
+          
+          if (!userSnap.exists()) {
+            // New Google user - create with old data + bonus
+            await setDoc(userDoc, {
+              customizationsUsed: oldData.customizationsUsed || 0,
+              customizationsAllowed: (oldData.customizationsAllowed || 0) + 3,
+              createdAt: new Date(),
+              isGoogleUser: true,
+              hasListenedToDefault: oldData.hasListenedToDefault || false,
+            });
+            console.log('✅ Created new user with migrated data + 3 bonus customizations');
+            return { userId, isNewUser: true };
+          } else {
+            // Existing Google user - just mark as Google user
+            await updateDoc(userDoc, {
+              isGoogleUser: true,
+            });
+            console.log('✅ Updated existing Google user');
+            return { userId, isNewUser: false };
+          }
+        }
+      }
+      
+      // Award customizations (same logic as popup)
+      const userDoc = doc(db, 'users', userId);
+      const userSnap = await getDoc(userDoc);
+      let isNewUser = false;
+      
+      if (!userSnap.exists()) {
+        console.log('🆕 New user - creating with 3 customizations');
         isNewUser = true;
-        const currentAllowed = currentData.customizationsAllowed || 0;
-        await updateDoc(userDoc, {
-          customizationsAllowed: currentAllowed + 3,
+        await setDoc(userDoc, {
+          customizationsUsed: 0,
+          customizationsAllowed: 3,
+          createdAt: new Date(),
           isGoogleUser: true,
         });
-        console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
+        console.log('✅ User document created successfully');
+      } else {
+        const currentData = userSnap.data();
+        if (!currentData.isGoogleUser) {
+          isNewUser = true;
+          const currentAllowed = currentData.customizationsAllowed || 0;
+          await updateDoc(userDoc, {
+            customizationsAllowed: currentAllowed + 3,
+            isGoogleUser: true,
+          });
+          console.log(`✅ Customizations increased from ${currentAllowed} to ${currentAllowed + 3}`);
+        }
       }
+      
+      return { userId, isNewUser };
     }
     
-    return { userId, isNewUser };
+    // No result
+    return null;
   } catch (error) {
     console.error('❌ Error handling redirect result:', error);
     return null;
@@ -174,6 +387,7 @@ export const handleRedirectResult = async (): Promise<{ userId: string; isNewUse
 // Helper function to sign in with Google
 export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: boolean }> => {
   try {
+    await ensurePersistence();
     console.log('🔐 Starting Google sign-in...');
     
     // Check if user is already signed in with Google
@@ -196,7 +410,28 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
     let userId: string;
     
     if (wasAnonymous && currentUser) {
-      // Try to link anonymous account with Google
+      // Save anonymous user data before signing out
+      if (!usePopup) {
+        const userDoc = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userDoc);
+        if (userSnap.exists()) {
+          const anonymousData = userSnap.data();
+          sessionStorage.setItem('anonymousData', JSON.stringify({
+            customizationsUsed: anonymousData.customizationsUsed || 0,
+            customizationsAllowed: anonymousData.customizationsAllowed || 0,
+            hasListenedToDefault: anonymousData.hasListenedToDefault || false,
+          }));
+          console.log('💾 Saved anonymous data for migration:', anonymousData);
+        }
+        sessionStorage.setItem('anonymousUid', currentUser.uid);
+        console.log('💾 Stored anonymous UID for data migration:', currentUser.uid);
+        
+        // Sign out anonymous user before redirect
+        await auth.signOut();
+        console.log('🚪 Signed out anonymous user before redirect');
+      }
+      
+      // Try to link anonymous account with Google (popup only)
       console.log('🔗 Attempting to link anonymous account with Google...');
       try {
         if (usePopup) {
@@ -204,10 +439,41 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
           userId = result.user.uid;
           console.log('✅ Accounts linked successfully via popup');
         } else {
-          // Use redirect - this will redirect the page
+          // Use regular sign-in redirect after signing out
           console.log('🔄 Redirecting to Google sign-in...');
-          sessionStorage.setItem('pendingRedirect', 'link');
-          await linkWithRedirect(currentUser, provider);
+          sessionStorage.setItem('pendingRedirect', 'signin');
+          
+          // Force auth domain to current origin if on localhost to ensure correct redirect
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            // Use http protocol for localhost to avoid SSL errors
+            const host = window.location.host;
+            auth.config.authDomain = host; // e.g. localhost:3000
+            
+            // Monkey patch the _getAppAuthDomain function if it exists (internal Firebase method)
+            // This is a hack but necessary because Firebase SDK forces https for auth domains
+            // @ts-ignore
+            if (auth._getAppAuthDomain) {
+              // @ts-ignore
+              auth._getAppAuthDomain = () => 'http://' + host;
+            }
+            
+            // Also try to patch the underlying _protocol if accessible
+            // @ts-ignore
+            if (auth._protocol) auth._protocol = 'http';
+            
+            // And patch the config object itself if it has a protocol property
+            // @ts-ignore
+            if (auth.config.protocol) auth.config.protocol = 'http';
+          } else {
+            // Reset to default behavior for production
+             // @ts-ignore
+             if (auth._getAppAuthDomain) {
+               // @ts-ignore
+               delete auth._getAppAuthDomain;
+             }
+          }
+          
+          await signInWithRedirect(auth, provider);
           // This line won't be reached - page will redirect
           throw new Error('REDIRECT_IN_PROGRESS');
         }
@@ -247,8 +513,9 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
                    firebaseError.code === 'auth/popup-closed-by-user' ||
                    (firebaseError.message && firebaseError.message.includes('Cross-Origin-Opener-Policy'))) {
           console.log('⚠️ Popup blocked or COOP error, switching to redirect...');
-          sessionStorage.setItem('pendingRedirect', 'link-fallback');
-          await linkWithRedirect(currentUser, provider);
+          sessionStorage.setItem('anonymousUid', currentUser.uid);
+          sessionStorage.setItem('pendingRedirect', 'signin-fallback');
+          await signInWithRedirect(auth, provider);
           throw new Error('REDIRECT_IN_PROGRESS');
         } else {
           throw linkError;
@@ -280,6 +547,30 @@ export const signInWithGoogle = async (): Promise<{ userId: string; isNewUser: b
       } else {
         console.log('🔄 Redirecting to Google sign-in...');
         sessionStorage.setItem('pendingRedirect', 'signin');
+        
+        // Force auth domain to current origin if on localhost to ensure correct redirect
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          // Use http protocol for localhost to avoid SSL errors
+          const host = window.location.host;
+          auth.config.authDomain = host;
+          
+          // @ts-ignore
+          if (auth._getAppAuthDomain) {
+            // @ts-ignore
+            auth._getAppAuthDomain = () => 'http://' + host;
+          }
+          
+          // Also try to patch the underlying _protocol if accessible
+          // @ts-ignore
+          if (auth._protocol) auth._protocol = 'http';
+        } else {
+           // @ts-ignore
+           if (auth._getAppAuthDomain) {
+             // @ts-ignore
+             delete auth._getAppAuthDomain;
+           }
+        }
+        
         await signInWithRedirect(auth, provider);
         throw new Error('REDIRECT_IN_PROGRESS');
       }

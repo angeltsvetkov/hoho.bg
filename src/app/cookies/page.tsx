@@ -32,7 +32,7 @@ export default function CookiesPage() {
             </p>
 
             <p className="my-6 font-bold text-[#d91f63]">
-              Политиката е част от Общите условия и Политиката за поверителност на BrainEXT, ЕИК 208028879.
+              Политиката е част от Общите условия и Политиката за поверителност на Viply, ЕИК 208028879.
             </p>
 
             <hr className="my-8 border-[#ffd7ec]" />
@@ -141,9 +141,9 @@ export default function CookiesPage() {
             
             <p className="mb-3">Ако имате въпроси относно бисквитките или защитата на данните, свържете се с нас:</p>
             
-            <p className="mb-1"><strong className="text-[#d91f63]">BrainEXT</strong></p>
+            <p className="mb-1"><strong className="text-[#d91f63]">Viply</strong></p>
             <p className="mb-1">ЕИК: 208028879</p>
-            <p className="mb-1">Email: <a href="mailto:angel@brainext.io" className="text-[#ff5a9d] hover:underline">angel@brainext.io</a></p>
+            <p className="mb-1">Email: <a href="mailto:angel@viply.org" className="text-[#ff5a9d] hover:underline">angel@viply.org</a></p>
             <p className="mb-3">Адрес: гр. София, кв. Витоша, бл. 5Б</p>
           </div>
         </div>

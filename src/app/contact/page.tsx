@@ -33,10 +33,10 @@ export default function ContactPage() {
               <h2 className="mb-4 text-2xl font-black text-[#d91f63]">📧 Email</h2>
               <p className="mb-2 text-lg text-[#d91f63]">
                 <a
-                  href="mailto:angel@brainext.io"
+                  href="mailto:angel@viply.org"
                   className="font-bold text-[#ff5a9d] transition hover:text-[#d91f63] hover:underline"
                 >
-                  angel@brainext.io
+                  angel@viply.org
                 </a>
               </p>
               <p className="text-sm text-[#d91f63]/70">
@@ -72,7 +72,7 @@ export default function ContactPage() {
               <div>
                   <h3 className="mb-2 text-lg font-bold text-[#d91f63]">Имам друг въпрос</h3>
                   <p className="text-[#d91f63]/80">
-                    Не се колебайте да ни пишете на <a href="mailto:angel@brainext.io" className="font-bold text-[#ff5a9d] hover:underline">angel@brainext.io</a>. Ще се радваме да отговорим на всички ваши въпроси! 🎄
+                    Не се колебайте да ни пишете на <a href="mailto:angel@viply.org" className="font-bold text-[#ff5a9d] hover:underline">angel@viply.org</a>. Ще се радваме да отговорим на всички ваши въпроси! 🎄
                   </p>
                 </div>
               </div>
@@ -113,7 +113,7 @@ export default function ContactPage() {
                 </p>
                 <p className="text-center">
                   <a
-                    href="mailto:angel@brainext.io?subject=Корпоративен%20пакет%20HoHo.bg"
+                    href="mailto:angel@viply.org?subject=Корпоративен%20пакет%20HoHo.bg"
                     className="inline-flex items-center gap-2 rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] px-6 py-3 text-base font-bold text-white shadow-lg transition hover:scale-105 hover:shadow-xl"
                   >
                     📧 Свържете се с нас за оферта

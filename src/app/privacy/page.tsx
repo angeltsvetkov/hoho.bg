@@ -28,7 +28,7 @@ export default function PrivacyPage() {
             <p className="text-sm text-[#d91f63]/60">Последна актуализация: 16/11/2025</p>
             
             <p className="my-6 text-lg font-bold text-[#d91f63]">
-              Настоящата Политика за поверителност описва как BrainEXT, ЕИК 208028879, със седалище и адрес на управление гр. София, кв. Витоша, бл. 5Б, имейл за контакт angel@brainext.io, обработва лични данни на потребителите на уебсайта hoho.bg.
+              Настоящата Политика за поверителност описва как Viply, ЕИК 208028879, със седалище и адрес на управление гр. София, кв. Витоша, бл. 5Б, имейл за контакт angel@viply.org, обработва лични данни на потребителите на уебсайта hoho.bg.
             </p>
 
             <p className="my-6 font-bold text-[#d91f63]">
@@ -40,10 +40,10 @@ export default function PrivacyPage() {
             <h2 className="mb-4 mt-8 text-2xl font-black text-[#d91f63]">1. Администратор на лични данни</h2>
             
             <p className="mb-3">Администратор на личните данни е:</p>
-            <p className="mb-1"><strong className="text-[#d91f63]">BrainEXT</strong></p>
+            <p className="mb-1"><strong className="text-[#d91f63]">Viply</strong></p>
             <p className="mb-1">ЕИК: 208028879</p>
             <p className="mb-1">Адрес: гр. София, кв. Витоша, бл. 5Б</p>
-            <p className="mb-3">Email: <a href="mailto:angel@brainext.io" className="text-[#ff5a9d] hover:underline">angel@brainext.io</a></p>
+            <p className="mb-3">Email: <a href="mailto:angel@viply.org" className="text-[#ff5a9d] hover:underline">angel@viply.org</a></p>
 
             <hr className="my-8 border-[#ffd7ec]" />
 
@@ -164,7 +164,7 @@ export default function PrivacyPage() {
               <li>право на възражение</li>
               <li>право на преносимост на данните</li>
             </ul>
-            <p className="mb-3">За упражняване на който и да е от тези права можете да ни пишете на: <a href="mailto:angel@brainext.io" className="text-[#ff5a9d] hover:underline">angel@brainext.io</a></p>
+            <p className="mb-3">За упражняване на който и да е от тези права можете да ни пишете на: <a href="mailto:angel@viply.org" className="text-[#ff5a9d] hover:underline">angel@viply.org</a></p>
 
             <hr className="my-8 border-[#ffd7ec]" />
 
@@ -189,7 +189,7 @@ export default function PrivacyPage() {
             <h2 className="mb-4 mt-8 text-2xl font-black text-[#d91f63]">11. Контакти</h2>
             
             <p className="mb-3">За въпроси относно обработката на лични данни можете да се свържете с нас на:</p>
-            <p className="mb-3">📧 <a href="mailto:angel@brainext.io" className="text-[#ff5a9d] hover:underline">angel@brainext.io</a></p>
+            <p className="mb-3">📧 <a href="mailto:angel@viply.org" className="text-[#ff5a9d] hover:underline">angel@viply.org</a></p>
           </div>
         </div>
       </div>

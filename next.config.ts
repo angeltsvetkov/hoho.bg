@@ -22,6 +22,23 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  async rewrites() {
+    return [
+      {
+        source: '/__/auth/handler',
+        destination: '/firebase-handler/auth/handler',
+      },
+      {
+        source: '/__/firebase/init.json',
+        destination: '/firebase-handler/firebase/init.json',
+      },
+      {
+        source: '/__/firebase/init.js',
+        destination: '/firebase-handler/firebase/init.js',
+      },
+    ];
+  },
+};
   async redirects() {
     return [];
   },
