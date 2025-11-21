@@ -780,9 +780,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* Promotional message - Invite a friend */}
+      {/* Promotional message - Invite a friend (hidden on mobile) */}
       {!isAuthLoading && currentUserId && (
-        <div className="fixed left-4 top-4 z-50 sm:left-6 sm:top-6">
+        <div className="fixed left-4 top-20 z-50 hidden sm:left-6 sm:top-6 sm:block">
           <button
             onClick={handleCopyReferralLink}
             className="group flex items-center gap-3 rounded-3xl border-2 border-white bg-linear-to-r from-[#f9d423] via-[#ff4e50] to-[#d91f63] px-4 py-2 text-left text-white shadow-[0_15px_40px_-20px_rgba(217,31,99,0.9)] transition hover:scale-105"
@@ -833,8 +833,24 @@ export default function Home() {
 
                   {/* Dropdown Menu */}
                   {showProfileMenu && (
-                    <div className="absolute right-0 top-full mt-2 w-48 overflow-hidden rounded-xl border-2 border-white bg-white shadow-xl ring-1 ring-black/5">
+                    <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-xl border-2 border-white bg-white shadow-xl ring-1 ring-black/5">
                       <div className="p-1">
+                        {/* Invite a friend option (mobile only) */}
+                        <button
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            handleCopyReferralLink();
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-[#d91f63] transition hover:bg-pink-50 sm:hidden"
+                        >
+                          <span className="text-base">🎁</span>
+                          <div className="flex-1 text-left">
+                            <div className="text-xs font-black uppercase tracking-wider text-[#d91f63]/70">Покани приятел</div>
+                            <div className="text-sm font-black">+5 персонализации</div>
+                          </div>
+                        </button>
+
+                        {/* Logout option */}
                         <button
                           onClick={handleLogout}
                           className="flex w-full items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-red-500 transition hover:bg-red-50"
