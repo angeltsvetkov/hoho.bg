@@ -120,9 +120,12 @@ export default function UserVideosExplorer({ userId, onSelectVideo, onClose }: U
                   className="group relative aspect-video rounded-xl overflow-hidden border-2 border-gray-100 cursor-pointer hover:border-[#ff5a9d] transition shadow-sm hover:shadow-md"
                 >
                   <video 
-                    src={video.videoUrl} 
+                    src={`${video.videoUrl}#t=0.1`} 
                     className="w-full h-full object-cover"
                     preload="metadata"
+                    playsInline
+                    muted
+                    poster="/santa-talking.webp"
                   />
                   <div className="absolute inset-0 bg-black/20 group-hover:bg-black/10 transition flex items-center justify-center">
                     <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center shadow-lg transform group-hover:scale-110 transition">
