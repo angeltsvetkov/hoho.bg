@@ -12,5 +12,5 @@
 
 - [x] Create and Run Task (Added `.vscode/tasks.json` via task runner for `npm run dev` and stopped the dev server afterward)
 
-- [ ] Launch the Project (Awaiting user confirmation to start `npm run dev`)
+- [x] Launch the Project (Started `npm run dev` and verified build success)
 - [x] Ensure Documentation is Complete (README обновен с детски фокус и бележка за българската локализация)
