@@ -46,15 +46,21 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
 
         if (lipsyncVideo) {
             if (videoUrl && isPlaying) {
-                lipsyncVideo.src = videoUrl;
                 // Reset ready state if we are starting a new playback
                 if (lipsyncVideo.readyState < 3) { // HAVE_FUTURE_DATA
-                    setIsVideoReady(false);
+                    requestAnimationFrame(() => setIsVideoReady(false));
                 } else {
-                    setIsVideoReady(true);
+                    requestAnimationFrame(() => setIsVideoReady(true));
                 }
                 
-                lipsyncVideo.play().catch(e => console.error("Lipsync video play failed", e));
+                const playPromise = lipsyncVideo.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => {
+                        console.error("Lipsync video play failed", e);
+                        // If autoplay fails, stop playing state so the play button appears
+                        if (onVideoEnded) onVideoEnded();
+                    });
+                }
             } else {
                 // Delay pausing the talking video to allow for a smooth crossfade
                 const timer = setTimeout(() => {
@@ -63,7 +69,7 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
                 return () => clearTimeout(timer);
             }
         }
-    }, [videoUrl, isPlaying]);
+    }, [videoUrl, isPlaying, onVideoEnded]);
 
     // Determine visibility
     // Show talking video only if playing AND (video is ready OR it's a static image fallback)
@@ -92,9 +98,11 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
                     // WaveSpeedAI generated lip-synced video
                     <video
                         ref={lipsyncVideoRef}
+                        src={videoUrl}
                         className="h-full w-full object-cover"
                         playsInline
                         muted={isMuted}
+                        preload="auto"
                         onLoadedData={() => setIsVideoReady(true)}
                         onWaiting={() => setIsVideoReady(false)}
                         onPlaying={() => setIsVideoReady(true)}

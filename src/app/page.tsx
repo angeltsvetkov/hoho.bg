@@ -6,6 +6,7 @@ import { useEffect, useState, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { storage, db, auth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, signInWithGoogle, awardReferralBonus, handleRedirectResult } from "@/lib/firebase";
 import { initializeAnalyticsWithConsent, setAnalyticsConsent, trackPageView, trackAudioPlay, trackCustomization, trackShare, trackPurchaseIntent } from "@/lib/analytics";
+import UserVideosExplorer from '@/components/UserVideosExplorer';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
@@ -86,6 +87,7 @@ function HomeContent() {
   const [isReferralCopied, setIsReferralCopied] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isReferralModalOpen, setIsReferralModalOpen] = useState(false);
+  const [showVideosExplorer, setShowVideosExplorer] = useState(false);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [dailyVideoUrl, setDailyVideoUrl] = useState<string | null>(null);
   const [isVideoMuted, setIsVideoMuted] = useState(true);
@@ -502,6 +504,7 @@ function HomeContent() {
           text: messageText,
           audioUrl: firebaseUrl,
           createdAt: timestamp,
+          userId: userId, // Associate with user
         });
 
         // Generate shareable URL
@@ -572,7 +575,8 @@ function HomeContent() {
                 // Play video
                 setDailyVideoUrl(null);
                 setIsVideoMuted(false);
-                setIsPlaying(true);
+                setIsPlaying(false);
+                setShowBigPlayButton(true);
 
                 // Save Firebase video URL to Firestore
                 const messageDoc = doc(db, "sharedMessages", uniqueId);
@@ -589,7 +593,8 @@ function HomeContent() {
                 // Play video
                 setDailyVideoUrl(null);
                 setIsVideoMuted(false);
-                setIsPlaying(true);
+                setIsPlaying(false);
+                setShowBigPlayButton(true);
 
                 try {
                   const messageDoc = doc(db, "sharedMessages", uniqueId);
@@ -768,8 +773,8 @@ function HomeContent() {
 
 
         {/* Santa Video/Animation - Left side, full height */}
-        <div className="relative w-full h-screen md:h-full md:fixed md:left-0 md:top-0 md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-0 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
-          <div className="relative w-full h-full md:w-auto md:h-full md:min-w-[520px] overflow-hidden md:rounded-4xl md:border-12 md:border-white bg-white md:shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-full pointer-events-auto" style={{ aspectRatio: '720/1200' }}>
+        <div className="relative w-full h-dvh md:h-full md:fixed md:left-0 md:top-0 md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-0 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
+          <div className="relative w-full h-full md:w-auto md:h-full md:min-w-[520px] overflow-hidden md:rounded-4xl md:border-12 md:border-white bg-white md:shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-full pointer-events-auto md:aspect-3/5">
             <AnimatedSanta
               isPlaying={isPlaying}
               videoUrl={dailyVideoUrl || generatedVideoUrl}
@@ -781,7 +786,7 @@ function HomeContent() {
                   setDailyVideoUrl(null); // Clear daily video to revert to idle
                 }
               }}
-              className={`h-full w-full object-cover transition-all duration-500 ${isGenerating ? 'blur-md scale-105' : ''}`}
+              className={`h-full w-full object-cover transition-all duration-500 ${isGenerating ? 'blur-md scale-130 md:scale-105' : 'scale-125 md:scale-100'}`}
             />
 
             {/* Watermark */}
@@ -886,7 +891,7 @@ function HomeContent() {
                 >
                   <div className="flex size-14 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-white">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="size-7">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" />
                     </svg>
                   </div>
                 </button>
@@ -1029,6 +1034,17 @@ function HomeContent() {
                           <button
                             onClick={() => {
                               setShowMobileMenu(false);
+                              setShowVideosExplorer(true);
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                          >
+                            <span>🎬</span>
+                            Моите видеа
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setShowMobileMenu(false);
                               setIsPurchaseModalOpen(true);
                             }}
                             className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#d91f63] hover:bg-pink-50 active:bg-pink-100"
@@ -1118,6 +1134,16 @@ function HomeContent() {
                       <div className="p-1">
                         <button
                           onClick={() => {
+                            setShowVideosExplorer(true);
+                            setShowProfileMenu(false);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-[#2b1830] transition hover:bg-[#fff0f8]"
+                        >
+                          <span className="text-lg">🎬</span>
+                          Моите видеа
+                        </button>
+                        <button
+                          onClick={() => {
                             setIsPurchaseModalOpen(true);
                             setShowProfileMenu(false);
                           }}
@@ -1143,7 +1169,7 @@ function HomeContent() {
             )}
 
             {/* Play Button Overlay */}
-            {!isPlaying && (
+            {!isPlaying && !showBigPlayButton && (
               <button
                 onClick={handlePlayButton}
                 className="absolute top-4 right-4 z-30 flex items-center justify-center group cursor-pointer"
@@ -1586,6 +1612,19 @@ function HomeContent() {
       }
 
 
+
+      {showVideosExplorer && currentUserId && (
+        <UserVideosExplorer
+          userId={currentUserId}
+          onSelectVideo={(videoUrl) => {
+            setGeneratedVideoUrl(videoUrl);
+            setDailyVideoUrl(null);
+            setIsPlaying(true);
+            setIsVideoMuted(false);
+          }}
+          onClose={() => setShowVideosExplorer(false)}
+        />
+      )}
 
       {/* Cookie Banner */}
       {
