@@ -451,7 +451,15 @@ export default function Home() {
   }, [mounted, timeLeft.days]);
 
   const handlePlayButton = () => {
-    // 1. Check for daily video
+    // 1. Check for generated video (custom message) - prioritize if exists
+    if (isCustomMessage && generatedVideoUrl) {
+      setIsVideoMuted(false);
+      setIsPlaying(true);
+      setHasListened(true);
+      return;
+    }
+
+    // 2. Check for daily video
     const daysRemaining = timeLeft.days;
     const daysKey = String(daysRemaining) as keyof typeof dailyVideos;
     const dailyVideo = dailyVideos[daysKey];
@@ -464,16 +472,10 @@ export default function Home() {
       return;
     }
 
-    // 2. Check for generated video (custom message)
-    if (generatedVideoUrl) {
-      setIsVideoMuted(false);
-      setIsPlaying(true);
-      setHasListened(true);
-      return;
-    }
-
     // 3. Fallback to audio only
-    playTextToSpeech();
+    if (!isCustomMessage) {
+      playTextToSpeech();
+    }
   };
 
   const handleShare = async () => {
@@ -611,6 +613,7 @@ export default function Home() {
       }
 
       setIsCustomMessage(true); // Mark as custom message
+      setDailyVideoUrl(null); // Ensure daily video doesn't override custom video
 
       // Always generate new audio, ignore cache
       const response = await fetch('/api/text-to-speech', {
@@ -724,6 +727,11 @@ export default function Home() {
 
                 console.log('✅ Video uploaded to Firebase:', firebaseVideoUrl);
                 setGeneratedVideoUrl(firebaseVideoUrl);
+                
+                // Play video
+                setDailyVideoUrl(null);
+                setIsVideoMuted(false);
+                setIsPlaying(true);
 
                 // Save Firebase video URL to Firestore
                 const messageDoc = doc(db, "sharedMessages", uniqueId);
@@ -737,6 +745,11 @@ export default function Home() {
                 // Fallback: use WaveSpeedAI URL directly
                 console.warn('Using WaveSpeedAI URL as fallback');
                 setGeneratedVideoUrl(videoData.videoUrl);
+                
+                // Play video
+                setDailyVideoUrl(null);
+                setIsVideoMuted(false);
+                setIsPlaying(true);
 
                 try {
                   const messageDoc = doc(db, "sharedMessages", uniqueId);
@@ -748,35 +761,20 @@ export default function Home() {
                 }
               }
             } else {
-              console.warn('⚠️ Video generation failed, falling back to audio-only');
+              console.warn('⚠️ Video generation failed');
             }
           } else {
             const error = await videoResponse.json();
             console.warn('⚠️ WaveSpeedAI error:', error.error);
-            console.warn('Falling back to audio-only');
           }
         } catch (videoError) {
           console.error('❌ Error generating video:', videoError);
-          console.warn('Falling back to audio-only');
         }
       } else {
         console.warn('⚠️ No Firebase audio URL available, skipping video generation');
       }
 
       setIsGenerating(false);
-      setIsPlaying(true);
-
-      const audio = new Audio(audioUrl);
-
-      audio.onended = () => {
-        setIsPlaying(false);
-      };
-
-      audio.onerror = () => {
-        setIsPlaying(false);
-      };
-
-      await audio.play();
     } catch (error) {
       console.error('Error generating speech:', error);
       setIsGenerating(false);
@@ -830,7 +828,7 @@ export default function Home() {
 
   return (
     <>
-      <main className="relative flex min-h-screen flex-col items-center justify-between overflow-hidden px-6 pt-6 md:pt-12 pb-6 md:pb-3 text-[#2b1830]">
+      <main className="relative flex min-h-screen flex-col items-center justify-between overflow-hidden px-0 md:px-6 pt-0 md:pt-12 pb-6 md:pb-3 text-[#2b1830]">
         {/* Full Screen Santa Background - REMOVED */}
         {/* <div className="fixed inset-0 z-0">
         <AnimatedSanta
@@ -865,7 +863,7 @@ export default function Home() {
 
 
         {/* Santa Video/Animation - Left side, full height */}
-        <div className="relative w-full h-auto md:fixed md:left-0 md:top-0 md:h-full md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-2 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
+        <div className="relative w-full h-auto md:fixed md:left-0 md:top-0 md:h-full md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-0 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
           <div className="relative w-full md:w-auto md:h-full md:min-w-[520px] overflow-hidden rounded-4xl border-12 border-white bg-white shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-full pointer-events-auto" style={{ aspectRatio: '720/1200' }}>
             <AnimatedSanta
               isPlaying={isPlaying}
@@ -1095,7 +1093,7 @@ export default function Home() {
                   <span className="relative z-10">{hasListened ? 'Персонализирай посланието' : 'Чуй посланието на Дядо Коледа'}</span>
                 </button>
               )}
-              {isCustomMessage && lastGeneratedAudioUrl && (
+              {isCustomMessage && lastGeneratedAudioUrl && !isGenerating && (
                 <div className="flex flex-col items-center gap-3">
                   <div className="flex flex-wrap justify-center gap-3">
                     {shareableUrl && (
@@ -1214,7 +1212,7 @@ export default function Home() {
                 disabled={isGenerating}
                 className="flex-1 rounded-3xl border-4 border-white bg-linear-to-br from-[#ff85b8] to-[#ff5a9d] px-6 py-4 text-lg font-black uppercase tracking-wider text-white shadow-[0_20px_60px_-25px_rgba(220,53,119,0.6)] transition hover:shadow-[0_25px_70px_-20px_rgба(220,53,119,0.7)] disabled:opacity-50"
               >
-                Запази
+                Персонализирай
               </button>
             </div>
           </div >
