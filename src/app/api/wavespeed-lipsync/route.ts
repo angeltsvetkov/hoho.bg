@@ -31,10 +31,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('🎬 Starting WaveSpeedAI lip sync generation...');
-        console.log('Audio URL:', audioUrl);
-        console.log('Image URL:', imageUrl);
-
         // Step 1: Submit the task to WaveSpeedAI
         const submitResponse = await fetch(
             'https://api.wavespeed.ai/api/v3/wavespeed-ai/infinitetalk',
@@ -87,9 +83,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        console.log('✅ Task submitted, requestId:', requestId);
-        console.log('⏳ Polling for completion...');
-
         // Step 2: Poll for the result
         while (true) {
             await new Promise(resolve => setTimeout(resolve, 100)); // 0.1 second interval
@@ -109,12 +102,8 @@ export async function POST(request: NextRequest) {
                 const data = result.data;
                 const status = data.status;
 
-                console.log('Status:', status);
-
                 if (status === 'completed') {
                     const resultUrl = data.outputs[0];
-                    console.log('🎉 Video generation completed!');
-                    console.log('Video URL:', resultUrl);
 
                     return NextResponse.json({
                         success: true,
@@ -130,8 +119,6 @@ export async function POST(request: NextRequest) {
                         },
                         { status: 500 }
                     );
-                } else {
-                    console.log('Task still processing. Status:', status);
                 }
             } else {
                 console.error('Error:', resultResponse.status, JSON.stringify(result));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 
 interface AnimatedSantaProps {
@@ -14,12 +14,21 @@ interface AnimatedSantaProps {
 export default function AnimatedSanta({ isPlaying, className = "", videoUrl = null, onVideoEnded, isMuted = true }: AnimatedSantaProps) {
     const idleVideoRef = useRef<HTMLVideoElement>(null);
     const lipsyncVideoRef = useRef<HTMLVideoElement>(null);
+    const [isVideoReady, setIsVideoReady] = useState(false);
+
+    // Reset video ready state when URL changes
+    useEffect(() => {
+        setIsVideoReady(false);
+    }, [videoUrl]);
 
     useEffect(() => {
         const idleVideo = idleVideoRef.current;
 
         if (idleVideo) {
-            if (isPlaying) {
+            // Only pause idle video when the talking video is actually ready to show
+            const shouldShowTalking = isPlaying && (videoUrl ? isVideoReady : true);
+            
+            if (shouldShowTalking) {
                 // Delay pausing the idle video to allow for a smooth crossfade
                 const timer = setTimeout(() => {
                     idleVideo.pause();
@@ -29,7 +38,7 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
                 idleVideo.play().catch(e => console.error("Idle play failed", e));
             }
         }
-    }, [isPlaying]);
+    }, [isPlaying, isVideoReady, videoUrl]);
 
     // Handle lip-synced video playback
     useEffect(() => {
@@ -38,6 +47,13 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
         if (lipsyncVideo) {
             if (videoUrl && isPlaying) {
                 lipsyncVideo.src = videoUrl;
+                // Reset ready state if we are starting a new playback
+                if (lipsyncVideo.readyState < 3) { // HAVE_FUTURE_DATA
+                    setIsVideoReady(false);
+                } else {
+                    setIsVideoReady(true);
+                }
+                
                 lipsyncVideo.play().catch(e => console.error("Lipsync video play failed", e));
             } else {
                 // Delay pausing the talking video to allow for a smooth crossfade
@@ -48,6 +64,10 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
             }
         }
     }, [videoUrl, isPlaying]);
+
+    // Determine visibility
+    // Show talking video only if playing AND (video is ready OR it's a static image fallback)
+    const showTalking = isPlaying && (videoUrl ? isVideoReady : true);
 
     return (
         <div className={`relative h-full w-full overflow-hidden bg-slate-900 ${className}`}>
@@ -60,13 +80,13 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
                 playsInline
                 autoPlay
                 className="absolute inset-0 h-full w-full object-cover transition-opacity duration-500 scale-110"
-                style={{ opacity: isPlaying ? 0 : 1, zIndex: 5 }}
+                style={{ opacity: showTalking ? 0 : 1, zIndex: 5 }}
             />
 
             {/* Talking Animation */}
             <div
                 className="absolute inset-0 h-full w-full transition-opacity duration-500"
-                style={{ opacity: isPlaying ? 1 : 0, zIndex: 6 }}
+                style={{ opacity: showTalking ? 1 : 0, zIndex: 6 }}
             >
                 {videoUrl ? (
                     // WaveSpeedAI generated lip-synced video
@@ -75,6 +95,9 @@ export default function AnimatedSanta({ isPlaying, className = "", videoUrl = nu
                         className="h-full w-full object-cover"
                         playsInline
                         muted={isMuted}
+                        onLoadedData={() => setIsVideoReady(true)}
+                        onWaiting={() => setIsVideoReady(false)}
+                        onPlaying={() => setIsVideoReady(true)}
                         onError={(e) => {
                             console.error("Video playback error:", e);
                             if (onVideoEnded) onVideoEnded();

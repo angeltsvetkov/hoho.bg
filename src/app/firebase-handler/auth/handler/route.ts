@@ -30,14 +30,11 @@ export function GET() {
   <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
   <script>
     const config = ${JSON.stringify(firebaseConfig)};
-    console.log('Initializing Firebase with config:', config);
     try {
       firebase.initializeApp(config);
-      console.log('Firebase initialized. Auth domain:', config.authDomain);
       
       // Explicitly call getRedirectResult to ensure processing happens
       firebase.auth().getRedirectResult().then((result) => {
-        console.log('getRedirectResult completed', result);
         // If we are here, the SDK should have handled the redirect.
         // If it didn't redirect automatically, we might need to help it.
         // But usually, for the handler page, the SDK redirects internally before resolving this promise.

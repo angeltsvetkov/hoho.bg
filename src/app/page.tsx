@@ -2,11 +2,12 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { storage, db, auth, getUserData, canUserCustomize, incrementCustomizationCount, markDefaultMessageListened, signInWithGoogle, awardReferralBonus, handleRedirectResult } from "@/lib/firebase";
 import { initializeAnalyticsWithConsent, setAnalyticsConsent, trackPageView, trackAudioPlay, trackCustomization, trackShare, trackPurchaseIntent } from "@/lib/analytics";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import type { User } from "firebase/auth";
 import AnimatedSanta from "@/components/AnimatedSanta";
 import dailyVideos from "@/data/daily-videos.json";
@@ -55,7 +56,7 @@ const calculateTimeLeft = (targetDate: Date): TimeLeft => {
   };
 };
 
-export default function Home() {
+function HomeContent() {
   const [mounted, setMounted] = useState(false);
   const [targetDate, setTargetDate] = useState(() => getNextChristmas(new Date()));
   const [timeLeft, setTimeLeft] = useState<TimeLeft>(() =>
@@ -88,6 +89,74 @@ export default function Home() {
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState<string | null>(null);
   const [dailyVideoUrl, setDailyVideoUrl] = useState<string | null>(null);
   const [isVideoMuted, setIsVideoMuted] = useState(true);
+  const [loadingMessage, setLoadingMessage] = useState("Подготвяме гласа...");
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [showInfoSubmenu, setShowInfoSubmenu] = useState(false);
+  const [showBigPlayButton, setShowBigPlayButton] = useState(false);
+
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const videoId = searchParams.get('v');
+    if (videoId) {
+      const fetchSharedVideo = async () => {
+        try {
+          const docRef = doc(db, "sharedMessages", videoId);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            if (data.videoUrl) {
+              setGeneratedVideoUrl(data.videoUrl);
+              setDailyVideoUrl(null);
+              setIsVideoMuted(false);
+              setIsPlaying(false);
+              setShowBigPlayButton(true);
+            }
+            if (data.text) {
+              setMessage(data.text);
+              setTempMessage(data.text);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching shared video:", error);
+        }
+      };
+      
+      fetchSharedVideo();
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!isGenerating) return;
+
+    const messages = [
+      "Събираме елфите за ежедневния брифинг...",
+      "Даваме инструкции на Дядо Коледа...",
+      "Проверяваме дали шейната е паркирана правилно...",
+      "Дядо Коледа загрява гласа си...",
+      "Търсим най-палавото джудже за помощ...",
+      "Подготвяме коледния микрофон...",
+      "Джуджетата изглаждат сценария...",
+      "Правим финални настройки...",
+      "Джуджетата записват посланието...",
+      "Добавяме щипка коледна магия...",
+      "Полираме звезден прах... почти готово...",
+      "Още малко търпение...",
+      "Опаковаме видеото с красива панделка...",
+      "Видео подаръкът лети към теб!"
+    ];
+
+    let index = 0;
+    setLoadingMessage(messages[0]);
+
+    const interval = setInterval(() => {
+      index = (index + 1) % messages.length;
+      setLoadingMessage(messages[index]);
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   const handlePurchase = async (customizations: number, price: number) => {
     if (!currentUserId) {
@@ -125,16 +194,14 @@ export default function Home() {
 
   const handleLogout = async () => {
     try {
-      console.log('🚪 Logging out...');
       await auth.signOut();
-      console.log('✅ Signed out from Firebase');
-      
+
       // Clear local state
       setCurrentUserId(null);
       setUserProfile(null);
       setCustomizationsRemaining(null);
       setShowProfileMenu(false);
-      
+
       // No reload - let the UI update naturally
     } catch (error) {
       console.error('❌ Error signing out:', error);
@@ -234,7 +301,6 @@ export default function Home() {
 
     const storageKey = `referral_processed_${userId}_${referrerId}`;
     if (localStorage.getItem(storageKey) === 'true') {
-      console.log('ℹ️ Referral already processed for this user.');
       return;
     }
 
@@ -258,21 +324,12 @@ export default function Home() {
 
     const initAuth = async () => {
       try {
-        console.log('🚀 Starting auth initialization...');
-        console.log('📍 Current URL:', window.location.href);
-        console.log('📍 URL Search Params:', window.location.search);
-        console.log('🚦 isAuthLoading:', isAuthLoading);
-        console.log('👤 isAnonymous: N/A');
-
         // Check if we're coming back from a redirect BEFORE checking auth state
         const pendingRedirect = sessionStorage.getItem('pendingRedirect');
         if (pendingRedirect) {
-          console.log('🚫 Redirect pending - processing immediately...');
-
           // Handle redirect FIRST, before waiting for auth state
           const redirectResult = await handleRedirectResult();
           if (redirectResult) {
-            console.log('✅ Redirect sign-in complete:', redirectResult);
             // Update UI state
             setCurrentUserId(redirectResult.userId);
 
@@ -296,17 +353,8 @@ export default function Home() {
           }
         }
 
-        console.log('⏳ Waiting for auth state...');
         const authUser = await new Promise<User | null>((resolve) => {
           const unsubscribe = auth.onAuthStateChanged((user) => {
-            console.log('🔐 onAuthStateChanged fired:', {
-              uid: user?.uid,
-              isAnonymous: user?.isAnonymous,
-              displayName: user?.displayName,
-              photoURL: user?.photoURL,
-              email: user?.email,
-              providerId: user?.providerData?.[0]?.providerId,
-            });
             unsubscribe();
             resolve(user);
           });
@@ -316,7 +364,6 @@ export default function Home() {
         if (!pendingRedirect) {
           const redirectResult = await handleRedirectResult();
           if (redirectResult) {
-            console.log('✅ Redirect sign-in complete:', redirectResult);
             // Update UI state
             setCurrentUserId(redirectResult.userId);
 
@@ -340,23 +387,14 @@ export default function Home() {
           }
         }
 
-        console.log('🔐 Auth state restored:', {
-          uid: authUser?.uid,
-          isAnonymous: authUser?.isAnonymous,
-          displayName: authUser?.photoURL,
-          photoURL: authUser?.photoURL,
-        });
-
         // Set user profile if logged in with Google
         if (authUser && !authUser.isAnonymous) {
           const profileData = {
             photoURL: authUser.photoURL,
             displayName: authUser.displayName,
           };
-          console.log('👤 Setting user profile:', profileData);
           setUserProfile(profileData);
           setCurrentUserId(authUser.uid);
-          console.log('✅ User profile set for Google user, isAnonymous=false');
 
           const userData = await getUserData(authUser.uid);
           setCustomizationsRemaining(userData.customizationsAllowed - userData.customizationsUsed);
@@ -370,7 +408,6 @@ export default function Home() {
 
         } else {
           // No user logged in
-          console.log('👤 No user logged in');
           setCurrentUserId(null);
           setUserProfile(null);
         }
@@ -388,19 +425,11 @@ export default function Home() {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user && !user.isAnonymous) {
-        console.log('🔄 Auth state changed: Google user detected', {
-          uid: user.uid,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          email: user.email
-        });
         setUserProfile({
           photoURL: user.photoURL,
           displayName: user.displayName,
         });
-        console.log('✅ Avatar URL set:', user.photoURL);
       } else {
-        console.log('🔄 Auth state changed: No user');
         setCurrentUserId(null);
         setUserProfile(null);
       }
@@ -409,184 +438,7 @@ export default function Home() {
     return () => unsubscribe();
   }, []);
 
-  // Close profile menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (showProfileMenu) {
-        const target = event.target as HTMLElement;
-        if (!target.closest('.profile-menu-container')) {
-          setShowProfileMenu(false);
-        }
-      }
-    };
 
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProfileMenu]);
-
-  // Play the pre-recorded speech or daily video on page load
-  useEffect(() => {
-    if (!mounted) return;
-
-    const playInitialContent = async () => {
-      const daysRemaining = timeLeft.days;
-      console.log('📅 Days remaining:', daysRemaining);
-      const daysKey = String(daysRemaining) as keyof typeof dailyVideos;
-      const dailyVideo = dailyVideos[daysKey];
-      console.log('🎥 Daily video found:', dailyVideo);
-
-      if (dailyVideo) {
-        // Setup daily video but don't autoplay
-        setDailyVideoUrl(dailyVideo);
-        setIsVideoMuted(false);
-        setIsPlaying(false);
-      } else {
-        // Fallback to audio speech
-        const speechFile = `/speech/${daysRemaining}.mp3`;
-        setInitialSpeechFile(speechFile);
-      }
-    };
-
-    playInitialContent();
-  }, [mounted, timeLeft.days]);
-
-  const handlePlayButton = () => {
-    // 1. Check for generated video (custom message) - prioritize if exists
-    if (isCustomMessage && generatedVideoUrl) {
-      setIsVideoMuted(false);
-      setIsPlaying(true);
-      setHasListened(true);
-      return;
-    }
-
-    // 2. Check for daily video
-    const daysRemaining = timeLeft.days;
-    const daysKey = String(daysRemaining) as keyof typeof dailyVideos;
-    const dailyVideo = dailyVideos[daysKey];
-
-    if (dailyVideo) {
-      setDailyVideoUrl(dailyVideo);
-      setIsVideoMuted(false);
-      setIsPlaying(true);
-      setHasListened(true);
-      return;
-    }
-
-    // 3. Fallback to audio only
-    if (!isCustomMessage) {
-      playTextToSpeech();
-    }
-  };
-
-  const handleShare = async () => {
-    if (!shareableUrl) return;
-
-    try {
-      if (navigator.share) {
-        await navigator.share({
-          title: 'Коледно послание',
-          text: message,
-          url: shareableUrl,
-        });
-        trackShare('native');
-      } else {
-        // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(shareableUrl);
-        trackShare('copy');
-        alert('Линкът е копиран! 🎉');
-      }
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') {
-        console.error('Error sharing:', error);
-      }
-    }
-  };
-
-  const handleShareFacebook = () => {
-    if (!shareableUrl) return;
-
-    trackShare('facebook');
-    const url = encodeURIComponent(shareableUrl);
-    const facebookUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
-    window.open(facebookUrl, '_blank', 'width=600,height=600');
-  };
-
-  const playTextToSpeech = async () => {
-    if (isPlaying) return;
-
-    setIsPlaying(true);
-    setHasListened(true);
-
-    // Mark as listened in Firestore if playing default message
-    if (!isCustomMessage && currentUserId) {
-      try {
-        await markDefaultMessageListened(currentUserId);
-      } catch (error) {
-        console.error('Error marking default message as listened:', error);
-      }
-    }
-
-    try {
-      let audioUrl: string;
-
-      // If message is not customized, play the predefined MP3
-      if (!isCustomMessage && initialSpeechFile) {
-        trackAudioPlay('default', timeLeft.days);
-        const audio = new Audio(initialSpeechFile);
-
-        audio.onended = () => {
-          setIsPlaying(false);
-        };
-
-        audio.onerror = () => {
-          setIsPlaying(false);
-        };
-
-        await audio.play();
-        return;
-      }
-
-      // For custom messages, check cache or generate new audio
-      if (audioCache.has(message)) {
-        audioUrl = audioCache.get(message)!;
-      } else {
-        // Generate new audio
-        const response = await fetch('/api/text-to-speech', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ text: message }),
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to generate speech');
-        }
-
-        const audioBlob = await response.blob();
-        audioUrl = URL.createObjectURL(audioBlob);
-
-        // Cache the audio URL
-        setAudioCache(prev => new Map(prev).set(message, audioUrl));
-        setLastGeneratedAudioUrl(audioUrl);
-      }
-
-      const audio = new Audio(audioUrl);
-
-      audio.onended = () => {
-        setIsPlaying(false);
-      };
-
-      audio.onerror = () => {
-        setIsPlaying(false);
-      };
-
-      await audio.play();
-    } catch (error) {
-      console.error('Error playing speech:', error);
-      setIsPlaying(false);
-    }
-  };
 
   const generateAndPlayNewSpeech = async (textToSpeak?: string) => {
     if (isGenerating || isPlaying) return;
@@ -652,11 +504,9 @@ export default function Home() {
           createdAt: timestamp,
         });
 
-        console.log('Audio uploaded to Firebase:', firebaseUrl);
-
         // Generate shareable URL
         const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-        const shareUrl = `${baseUrl}/share/${uniqueId}`;
+        const shareUrl = `${baseUrl}/?v=${uniqueId}`;
         setShareableUrl(shareUrl);
 
         // Increment customization count
@@ -680,16 +530,12 @@ export default function Home() {
       trackAudioPlay('custom');
 
       // Generate lip-synced video with WaveSpeedAI
-      console.log('🎬 Generating lip-synced video...');
       setGeneratedVideoUrl(null); // Clear any previous video
 
       if (firebaseAudioUrl) {
         try {
           // Use pre-uploaded Santa image (WebP format)
           const santaImageUrl = 'https://firebasestorage.googleapis.com/v0/b/hoho-bg.firebasestorage.app/o/images%2Fsanta-talking.webp?alt=media&token=d50d404c-d9e4-4c4c-b7e3-b945ae92ac2e';
-
-          console.log('✅ Using Santa image:', santaImageUrl);
-          console.log('✅ Audio URL (Firebase):', firebaseAudioUrl);
 
           // Call WaveSpeedAI API to generate lip-synced video
           const videoResponse = await fetch('/api/wavespeed-lipsync', {
@@ -706,28 +552,23 @@ export default function Home() {
           if (videoResponse.ok) {
             const videoData = await videoResponse.json();
             if (videoData.success && videoData.videoUrl) {
-              console.log('🎉 Video generated successfully:', videoData.videoUrl);
 
               // Download video from WaveSpeedAI and upload to Firebase Storage
               try {
-                console.log('📥 Downloading video from WaveSpeedAI...');
                 const videoDownloadResponse = await fetch(videoData.videoUrl);
                 if (!videoDownloadResponse.ok) {
                   throw new Error('Failed to download video');
                 }
 
                 const videoBlob = await videoDownloadResponse.blob();
-                console.log('✅ Video downloaded, size:', (videoBlob.size / 1024 / 1024).toFixed(2), 'MB');
 
                 // Upload to Firebase Storage
-                console.log('☁️ Uploading video to Firebase Storage...');
                 const videoStorageRef = ref(storage, `videos/${uniqueId}.mp4`);
                 await uploadBytes(videoStorageRef, videoBlob);
                 const firebaseVideoUrl = await getDownloadURL(videoStorageRef);
 
-                console.log('✅ Video uploaded to Firebase:', firebaseVideoUrl);
                 setGeneratedVideoUrl(firebaseVideoUrl);
-                
+
                 // Play video
                 setDailyVideoUrl(null);
                 setIsVideoMuted(false);
@@ -738,14 +579,13 @@ export default function Home() {
                 await setDoc(messageDoc, {
                   videoUrl: firebaseVideoUrl,
                 }, { merge: true });
-                console.log('✅ Video URL saved to Firestore');
 
               } catch (videoUploadError) {
                 console.error('Failed to upload video to Firebase:', videoUploadError);
                 // Fallback: use WaveSpeedAI URL directly
                 console.warn('Using WaveSpeedAI URL as fallback');
                 setGeneratedVideoUrl(videoData.videoUrl);
-                
+
                 // Play video
                 setDailyVideoUrl(null);
                 setIsVideoMuted(false);
@@ -781,6 +621,67 @@ export default function Home() {
     }
   };
 
+  const handlePlayButton = async () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
+    }
+
+    if (generatedVideoUrl) {
+      setIsPlaying(true);
+      setIsVideoMuted(false);
+      return;
+    }
+    
+    // Try to find a daily video
+    const daysLeft = timeLeft.days;
+    const videoUrl = (dailyVideos as Record<string, string>)[String(daysLeft)];
+
+    if (videoUrl) {
+      setDailyVideoUrl(videoUrl);
+      setIsPlaying(true);
+      setIsVideoMuted(false);
+      return;
+    }
+
+    await generateAndPlayNewSpeech(message);
+  };
+
+  const handleShare = async () => {
+    if (!shareableUrl) return;
+    
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Хо Хо Хо! 🎅',
+          text: 'Вижте моето коледно послание от Дядо Коледа!',
+          url: shareableUrl,
+        });
+        trackShare('native');
+      } catch {
+        // User likely cancelled share
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(shareableUrl);
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+        trackShare('copy');
+        alert('Линкът е копиран!');
+      } catch (err) {
+        console.error('Failed to copy:', err);
+      }
+    }
+  };
+
+  const handleShareFacebook = () => {
+    if (shareableUrl) {
+      const url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareableUrl)}`;
+      window.open(url, '_blank');
+      trackShare('facebook');
+    }
+  };
+
   // Cleanup cached audio URLs when component unmounts
   useEffect(() => {
     return () => {
@@ -813,11 +714,15 @@ export default function Home() {
       if (showProfileMenu && !target.closest('.profile-menu-container')) {
         setShowProfileMenu(false);
       }
+      // Also close mobile menu
+      if (showMobileMenu && !target.closest('.absolute.bottom-6.right-6')) {
+        setShowMobileMenu(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showProfileMenu]);
+  }, [showProfileMenu, showMobileMenu]);
 
   const countdownValues = [
     { label: "Дни", value: timeLeft.days },
@@ -863,8 +768,8 @@ export default function Home() {
 
 
         {/* Santa Video/Animation - Left side, full height */}
-        <div className="relative w-full h-auto md:fixed md:left-0 md:top-0 md:h-full md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-0 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
-          <div className="relative w-full md:w-auto md:h-full md:min-w-[520px] overflow-hidden rounded-4xl border-12 border-white bg-white shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-full pointer-events-auto" style={{ aspectRatio: '720/1200' }}>
+        <div className="relative w-full h-screen md:h-full md:fixed md:left-0 md:top-0 md:w-1/3 md:min-w-[550px] lg:w-[40%] lg:min-w-[600px] xl:w-[45%] xl:min-w-[650px] p-0 md:p-3 lg:pl-12 xl:pl-24 flex items-center justify-center pointer-events-none md:pointer-events-auto" style={{ zIndex: 50 }}>
+          <div className="relative w-full h-full md:w-auto md:h-full md:min-w-[520px] overflow-hidden md:rounded-4xl md:border-12 md:border-white bg-white md:shadow-[0_20px_50px_rgba(0,0,0,0.3)] max-w-full pointer-events-auto" style={{ aspectRatio: '720/1200' }}>
             <AnimatedSanta
               isPlaying={isPlaying}
               videoUrl={dailyVideoUrl || generatedVideoUrl}
@@ -876,18 +781,36 @@ export default function Home() {
                   setDailyVideoUrl(null); // Clear daily video to revert to idle
                 }
               }}
-              className="h-full w-full object-cover"
+              className={`h-full w-full object-cover transition-all duration-500 ${isGenerating ? 'blur-md scale-105' : ''}`}
             />
+
+            {/* Watermark */}
+            <div className="absolute bottom-2 left-0 right-0 z-20 text-center pointer-events-none md:hidden">
+              <p className="text-[10px] font-bold text-white/50 drop-shadow-md">
+                © 2025 Viply.
+              </p>
+            </div>
+
+            {/* Loading Overlay */}
+            {isGenerating && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-sm">
+                <div className="flex flex-col items-center gap-4 p-6 rounded-3xl bg-white/90 shadow-2xl backdrop-blur-md mx-4 text-center">
+                  <div className="relative size-16">
+                    <div className="absolute inset-0 rounded-full border-4 border-[#ffd7ec]"></div>
+                    <div className="absolute inset-0 rounded-full border-4 border-t-[#ff5a9d] animate-spin"></div>
+                  </div>
+                  <p className="text-lg font-bold text-[#d91f63] animate-pulse">{loadingMessage}</p>
+                </div>
+              </div>
+            )}
 
             {/* Login Button Overlay (when not logged in) */}
             {!isAuthLoading && !currentUserId && (
-              <div className="absolute top-4 left-4 z-30">
+              <div className="hidden md:block absolute top-4 left-4 z-30">
                 <button
                   onClick={async () => {
                     try {
-                      console.log('🔄 Starting Google sign-in process...');
                       const { userId, isNewUser } = await signInWithGoogle();
-                      console.log('✅ Sign-in complete, user ID:', userId);
                       setCurrentUserId(userId);
 
                       // Set user profile
@@ -899,11 +822,52 @@ export default function Home() {
                         });
                       }
 
-                      console.log('📊 Fetching user data...');
                       const userData = await getUserData(userId, false);
-                      console.log('📦 User data:', userData);
                       const remaining = userData.customizationsAllowed - userData.customizationsUsed;
-                      console.log('🎁 Customizations remaining:', remaining);
+                      setCustomizationsRemaining(remaining);
+
+                      // Only show success message if user is new (received customizations)
+                      if (isNewUser) {
+                        alert('🎉 Добре дошли! Получихте 3 безплатни персонализации!');
+                      }
+                    } catch (error) {
+                      const typedError = error as { message?: string };
+                      if (typedError?.message === 'REDIRECT_IN_PROGRESS') return;
+                      if (typedError?.message === 'POPUP_CANCELLED') return;
+                      console.error('❌ Login failed:', error);
+                      alert(typedError?.message || 'Неуспешен вход. Моля, опитайте отново.');
+                    }
+                  }}
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-sm transition-transform duration-300 hover:scale-110"
+                >
+                  <div className="flex size-14 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="size-7">
+                    </svg>
+                  </div>
+                </button>
+              </div>
+            )}
+
+            {/* Mobile Context Menu */}
+            <div className="absolute bottom-6 right-6 z-50 md:hidden">
+              {!currentUserId ? (
+                <button
+                  onClick={async () => {
+                    try {
+                      const { userId, isNewUser } = await signInWithGoogle();
+                      setCurrentUserId(userId);
+
+                      // Set user profile
+                      const user = auth.currentUser;
+                      if (user) {
+                        setUserProfile({
+                          photoURL: user.photoURL,
+                          displayName: user.displayName,
+                        });
+                      }
+
+                      const userData = await getUserData(userId, false);
+                      const remaining = userData.customizationsAllowed - userData.customizationsUsed;
                       setCustomizationsRemaining(remaining);
 
                       // Only show success message if user is new (received customizations)
@@ -926,8 +890,180 @@ export default function Home() {
                     </svg>
                   </div>
                 </button>
-              </div>
-            )}
+              ) : (
+                <div className="relative">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMobileMenu(!showMobileMenu);
+                    }}
+                    className="flex h-16 w-16 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-sm transition-transform duration-300 hover:scale-110"
+                  >
+                    <div className="flex size-14 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-white">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="size-7">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Badge for remaining customizations */}
+                  {customizationsRemaining !== null && (
+                    <div className="absolute -top-1 -right-1 z-10 flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-[#d91f63] text-xs font-black text-white shadow-lg pointer-events-none">
+                      {customizationsRemaining}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showMobileMenu && currentUserId && (
+                <div className="absolute bottom-full right-0 mb-4 flex w-64 flex-col overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
+                  {showInfoSubmenu ? (
+                    <>
+                      <div className="flex items-center gap-3 border-b border-gray-100 bg-pink-50/50 px-4 py-3">
+                        <button 
+                          onClick={() => setShowInfoSubmenu(false)}
+                          className="flex items-center justify-center rounded-full p-1 hover:bg-pink-100"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="size-5 text-[#d91f63]">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                          </svg>
+                        </button>
+                        <span className="text-sm font-bold text-[#2b1830]">Информация</span>
+                      </div>
+                      <div className="flex flex-col p-2">
+                        <Link href="/contact" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100 rounded-xl">Контакт</Link>
+                        <Link href="/terms" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100 rounded-xl">Условия</Link>
+                        <Link href="/privacy" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100 rounded-xl">Поверителност</Link>
+                        <Link href="/cookies" className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100 rounded-xl">Бисквитки</Link>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* User Profile Header */}
+                      {currentUserId && (
+                        <div className="flex items-center gap-3 border-b border-gray-100 bg-pink-50/50 px-4 py-3">
+                          {userProfile?.photoURL ? (
+                            <Image
+                              src={userProfile.photoURL}
+                              alt={userProfile.displayName || 'User'}
+                              width={40}
+                              height={40}
+                              className="size-10 rounded-full object-cover ring-2 ring-white"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <div className="flex size-10 items-center justify-center rounded-full bg-linear-to-r from-[#ff5a9d] to-[#d91f63] text-white ring-2 ring-white">
+                              <span className="text-sm font-bold">
+                                {userProfile?.displayName?.[0]?.toUpperCase() || '👤'}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex flex-col overflow-hidden">
+                            <span className="truncate text-sm font-bold text-[#2b1830]">
+                              {userProfile?.displayName || 'Потребител'}
+                            </span>
+                            <span className="text-xs text-[#d91f63]">
+                              {customizationsRemaining} персонализации
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {isCustomMessage && (
+                        <button
+                          onClick={() => {
+                            setShowMobileMenu(false);
+                            handleOpenEditor();
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                        >
+                          <span>✏️</span>
+                          Редактирай
+                        </button>
+                      )}
+                      
+                      {shareableUrl && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setShowMobileMenu(false);
+                              handleShare();
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                          >
+                            <span>🎁</span>
+                            Сподели
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setShowMobileMenu(false);
+                              navigator.clipboard.writeText(shareableUrl);
+                              alert('Линкът е копиран!');
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                          >
+                            <span>📋</span>
+                            Копирай линк
+                          </button>
+                        </>
+                      )}
+
+                      {!isCustomMessage && (
+                        <button
+                          onClick={() => {
+                            setShowMobileMenu(false);
+                            handleOpenEditor();
+                          }}
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                        >
+                          <span>✨</span>
+                          Създай свое
+                        </button>
+                      )}
+
+                      {/* Logout and Buy More */}
+                      {currentUserId && (
+                        <>
+                          <div className="my-1 border-t border-gray-100" />
+                          <button
+                            onClick={() => {
+                              setShowMobileMenu(false);
+                              setIsPurchaseModalOpen(true);
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#d91f63] hover:bg-pink-50 active:bg-pink-100"
+                          >
+                            <span>🎁</span>
+                            Купи още
+                          </button>
+                          
+                          <button
+                            onClick={() => setShowInfoSubmenu(true)}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-[#2b1830] hover:bg-pink-50 active:bg-pink-100"
+                          >
+                            <span>ℹ️</span>
+                            Информация
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              setShowMobileMenu(false);
+                              handleLogout();
+                            }}
+                            className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-bold text-red-500 hover:bg-red-50 active:bg-red-100"
+                          >
+                            <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            Изход
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Auth Loading State */}
             {isAuthLoading && (
@@ -945,7 +1081,7 @@ export default function Home() {
 
             {/* Avatar Overlay */}
             {!isAuthLoading && currentUserId && (
-              <div className="absolute top-4 left-4 z-30 profile-menu-container">
+              <div className="hidden md:block absolute top-4 left-4 z-30 profile-menu-container">
                 <div className="relative">
                   <button
                     onClick={() => setShowProfileMenu(!showProfileMenu)}
@@ -1020,9 +1156,30 @@ export default function Home() {
                 </div>
               </button>
             )}
-            
+
+            {/* Big Center Play Button for Shared Videos */}
+            {showBigPlayButton && !isPlaying && (
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/20 backdrop-blur-[2px]">
+                <button
+                  onClick={() => {
+                    setIsPlaying(true);
+                    setShowBigPlayButton(false);
+                  }}
+                  className="group relative flex h-24 w-24 items-center justify-center rounded-full bg-white shadow-[0_0_40px_rgba(217,31,99,0.6)] transition-transform duration-300 hover:scale-110"
+                  aria-label="Play Shared Video"
+                >
+                  <div className="absolute inset-0 rounded-full bg-[#d91f63] opacity-20 animate-ping"></div>
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="ml-2 h-12 w-12 text-[#d91f63]">
+                    <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+
+
             {/* Countdown Overlay */}
-            <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/90 via-black/60 to-transparent p-4 pt-20 z-20">
+            <div className="hidden md:block absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/90 via-black/60 to-transparent p-4 pt-20 z-20">
               <div className="mb-3 text-center">
                 <h1 className="bg-linear-to-b from-white via-[#ffcccc] to-[#ff0000] bg-clip-text text-2xl font-black tracking-tight text-transparent sm:text-3xl" style={{ fontFamily: 'Poppins, sans-serif', filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.8))' }}>
                   ✨ До Коледа остават ✨
@@ -1044,18 +1201,18 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="relative z-10 flex w-full flex-1 flex-col items-center gap-8 mt-8 md:mt-0 md:w-2/3 md:max-w-[calc(100%-550px)] lg:w-[60%] lg:max-w-[calc(100%-600px)] xl:w-[55%] xl:max-w-[calc(100%-650px)] md:ml-auto">
+        <div className="hidden md:flex relative z-10 w-full flex-1 flex-col items-center gap-8 mt-8 md:mt-0 md:w-2/3 md:max-w-[calc(100%-550px)] lg:w-[60%] lg:max-w-[calc(100%-600px)] xl:w-[55%] xl:max-w-[calc(100%-650px)] md:ml-auto">
           {/* Santa Frame with Overlay Content */}
           <div className="flex w-full flex-1 flex-col items-center justify-end pb-48 md:justify-center md:pb-0">
 
             {/* Message Bubble Container - Overlays on top of Santa */}
-            <div className="relative z-20 w-full max-w-2xl px-6">
+            <div className="hidden md:block relative z-20 w-full max-w-2xl px-6">
               <div className="relative w-full rounded-4xl border-4 border-white bg-linear-to-br from-[#fff0f8]/90 to-[#ffe8f5]/90 px-6 py-6 text-center shadow-[0_30px_90px_-30px_rgba(178,24,77,0.4)] backdrop-blur-sm">
-                {isCustomMessage && (
+                {isCustomMessage && !isGenerating && (
                   <>
                     <button
                       onClick={handleOpenEditor}
-                      className="absolute -left-4 -top-4 flex size-12 items-center justify-center rounded-full bg-white text-2xl shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] transition hover:scale-110 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]"
+                      className="hidden md:flex absolute -left-4 -top-4 size-12 items-center justify-center rounded-full bg-white text-2xl shadow-[0_20px_60px_-25px_rgba(220,53,119,0.5)] transition hover:scale-110 hover:shadow-[0_25px_70px_-20px_rgba(220,53,119,0.6)]"
                       aria-label="Редактирай послание"
                     >
                       ✏️
@@ -1068,14 +1225,6 @@ export default function Home() {
                 >
                   {message}
                 </p>
-                {isGenerating && (
-                  <div className="absolute inset-0 flex items-center justify-center rounded-4xl bg-white/80 backdrop-blur-sm">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="size-12 animate-spin rounded-full border-4 border-[#ffd7ec] border-t-[#ff5a9d]"></div>
-                      <p className="text-sm font-bold text-[#d91f63]">Подготвяме гласа...</p>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Action Buttons (Inside Video Frame) */}
@@ -1094,7 +1243,7 @@ export default function Home() {
                 </button>
               )}
               {isCustomMessage && lastGeneratedAudioUrl && !isGenerating && (
-                <div className="flex flex-col items-center gap-3">
+                <div className="hidden md:flex flex-col items-center gap-3 mt-8">
                   <div className="flex flex-wrap justify-center gap-3">
                     {shareableUrl && (
                       <button
@@ -1130,7 +1279,7 @@ export default function Home() {
           </div> {/* Close message bubble container */}
 
           {/* Footer */}
-          <footer className="mt-auto w-full border-t-2 border-white/20 pt-4 pb-2 relative z-10">
+          <footer className="hidden md:block mt-auto w-full border-t-2 border-white/20 pt-4 pb-2 relative z-10">
             <div className="flex flex-col items-center gap-4">
               <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
                 <Link
@@ -1320,9 +1469,7 @@ export default function Home() {
                     onClick={async () => {
                       try {
                         setIsPurchaseModalOpen(false);
-                        console.log('🔄 Starting Google sign-in process...');
                         const { userId, isNewUser } = await signInWithGoogle();
-                        console.log('✅ Sign-in complete, user ID:', userId);
                         setCurrentUserId(userId);
 
                         // Set user profile
@@ -1334,11 +1481,8 @@ export default function Home() {
                           });
                         }
 
-                        console.log('📊 Fetching user data...');
                         const userData = await getUserData(userId, false);
-                        console.log('📦 User data:', userData);
                         const remaining = userData.customizationsAllowed - userData.customizationsUsed;
-                        console.log('🎁 Customizations remaining:', remaining);
                         setCustomizationsRemaining(remaining);
 
                         // Only show success message if user is new (received customizations)
@@ -1481,5 +1625,13 @@ export default function Home() {
         )
       }
     </>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#0f172a] text-white">Зареждане...</div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

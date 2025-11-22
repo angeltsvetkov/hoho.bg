@@ -52,24 +52,12 @@ export async function POST(request: NextRequest) {
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      console.log('🎉 Checkout completed!');
-      console.log('Session details:', {
-        sessionId: session.id,
-        customerId: session.customer,
-        customerEmail: session.customer_details?.email,
-        clientReferenceId: session.client_reference_id,
-        metadata: session.metadata,
-        paymentStatus: session.payment_status,
-        amountTotal: session.amount_total,
-      });
-
       // Get the user ID from client_reference_id (from payment link) or metadata
       const userId = session.client_reference_id || session.metadata?.userId;
       
       // If no userId, try to get it from customer details or session
       if (!userId) {
         console.warn('⚠️ No userId in client_reference_id or metadata');
-        console.log('Full session object:', JSON.stringify(session, null, 2));
         
         // As a fallback, we could use customer email or ID
         // But this is not ideal - user should be passed via client_reference_id
@@ -80,17 +68,13 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      console.log(`👤 Processing for user: ${userId}`);
-
       // Check if we can determine customizations from payment_link
       const paymentLinkId = typeof session.payment_link === 'string' ? session.payment_link : null;
       if (paymentLinkId && PRICE_TO_CUSTOMIZATIONS[paymentLinkId]) {
         const customizations = PRICE_TO_CUSTOMIZATIONS[paymentLinkId];
-        console.log(`💰 Matched payment link ${paymentLinkId} to ${customizations} customizations`);
         
         try {
           await addCustomizationsToUser(userId, customizations);
-          console.log(`✅ Successfully added ${customizations} customizations to user ${userId}`);
           return NextResponse.json({
             success: true,
             message: `Added ${customizations} customizations to user ${userId}`,
@@ -107,19 +91,15 @@ export async function POST(request: NextRequest) {
       // Fallback: Get line items to determine what was purchased
       const lineItems = await stripe.checkout.sessions.listLineItems(session.id);
       
-      console.log('Line items:', JSON.stringify(lineItems.data, null, 2));
-      
       let totalCustomizations = 0;
       
       for (const item of lineItems.data) {
         const priceId = item.price?.id;
         const amount = item.amount_total || 0; // Amount in cents
-        console.log(`Processing item with price ID: ${priceId}, amount: ${amount}`);
         
         if (priceId && PRICE_TO_CUSTOMIZATIONS[priceId]) {
           const quantity = item.quantity || 1;
           totalCustomizations += PRICE_TO_CUSTOMIZATIONS[priceId] * quantity;
-          console.log(`Matched by price ID! Adding ${PRICE_TO_CUSTOMIZATIONS[priceId] * quantity} customizations`);
         } else if (amount) {
           // Fallback: determine customizations by amount
           // 100 cents = 1 лв = 1 customization
@@ -133,8 +113,6 @@ export async function POST(request: NextRequest) {
           
           if (customizationsByAmount[amount]) {
             totalCustomizations += customizationsByAmount[amount];
-            console.log(`Matched by amount (${amount})! Adding ${customizationsByAmount[amount]} customizations`);
-            console.log(`Note: Add price ID "${priceId}" to PRICE_TO_CUSTOMIZATIONS mapping`);
           } else {
             console.warn(`Unknown price ID: ${priceId} and unknown amount: ${amount}`);
           }
@@ -147,7 +125,6 @@ export async function POST(request: NextRequest) {
         // Add customizations to the user's account
         try {
           await addCustomizationsToUser(userId, totalCustomizations);
-          console.log(`✅ Successfully added ${totalCustomizations} customizations to user ${userId}`);
         } catch (error) {
           console.error(`❌ Failed to add customizations to user ${userId}:`, error);
           return NextResponse.json(
@@ -173,12 +150,6 @@ export async function POST(request: NextRequest) {
     if (event.type === 'payment_intent.succeeded') {
       const paymentIntent = event.data.object as Stripe.PaymentIntent;
       
-      console.log('Payment succeeded:', {
-        paymentIntentId: paymentIntent.id,
-        amount: paymentIntent.amount,
-        metadata: paymentIntent.metadata,
-      });
-
       const userId = paymentIntent.metadata?.userId;
       const customizations = paymentIntent.metadata?.customizations;
 
@@ -186,8 +157,6 @@ export async function POST(request: NextRequest) {
         const amount = parseInt(customizations, 10);
         if (!isNaN(amount) && amount > 0) {
           await addCustomizationsToUser(userId, amount);
-          
-          console.log(`Added ${amount} customizations to user ${userId}`);
           
           return NextResponse.json({
             success: true,
