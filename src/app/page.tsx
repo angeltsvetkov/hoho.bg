@@ -738,7 +738,7 @@ function HomeContent() {
 
   return (
     <>
-      <main className="relative flex min-h-screen flex-col items-center justify-between overflow-hidden px-0 md:px-6 pt-0 md:pt-12 pb-6 md:pb-3 text-[#2b1830]">
+      <main className="relative flex h-dvh md:min-h-screen flex-col items-center justify-between overflow-hidden px-0 md:px-6 pt-0 md:pt-12 pb-0 md:pb-3 text-[#2b1830]">
         {/* Full Screen Santa Background - REMOVED */}
         {/* <div className="fixed inset-0 z-0">
         <AnimatedSanta
